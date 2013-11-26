@@ -282,6 +282,7 @@
 #define CONFIG_SUPPORT_RAW_INITRD
 
 #define CONFIG_DOS_PARTITION
+#define CONFIG_EFI_PARTITION
 #define CONFIG_CMD_FAT		/* with this we can access fat bootfs */
 #define CONFIG_FAT_WRITE	/* enable write access */
 #define CONFIG_CMD_EXT2		/* with this we can access ext2 bootfs */
@@ -461,5 +462,10 @@
     !defined CONFIG_ENV_IS_IN_SPI_FLASH
 #define CONFIG_ENV_IS_NOWHERE
 #endif
+
+#define CONFIG_USB_SUNXI
+#define CONFIG_CMD_FASTBOOT
+#define MEMORY_BASE                             0x80000000
+#define CONFIG_ADDR_DOWNLOAD			(MEMORY_BASE + 0x02000000)
 
 #endif /* _SUNXI_COMMON_CONFIG_H */

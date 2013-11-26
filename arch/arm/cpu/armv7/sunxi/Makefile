@@ -36,6 +36,7 @@ COBJS	+= board.o
 COBJS	+= clock.o
 COBJS	+= pinmux.o
 COBJS	+= watchdog.o
+COBJS   += sparse.o
 ifdef DEBUG
 COBJS	+= early_print.o
 endif

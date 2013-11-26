@@ -22,6 +22,11 @@
 #include <asm/byteorder.h>
 #include <asm/io.h>
 #include <linux/compiler.h>
+#include <usb/fastboot.h>
+#include <mmc.h>
+#include <bootimg.h>
+#include <config.h>
+
 
 #if defined(CONFIG_CMD_USB)
 #include <usb.h>
@@ -50,6 +55,10 @@ DECLARE_GLOBAL_DATA_PTR;
 
 #ifndef CONFIG_SYS_BOOTM_LEN
 #define CONFIG_SYS_BOOTM_LEN	0x800000	/* use 8MByte as default max gunzip size */
+#endif
+
+#if defined(CONFIG_CMD_FASTBOOT)
+extern int do_fastboot(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[]);
 #endif
 
 #ifdef CONFIG_BZIP2
@@ -1871,3 +1880,185 @@ U_BOOT_CMD(
 	"boot Linux zImage image from memory", bootz_help_text
 );
 #endif	/* CONFIG_CMD_BOOTZ */
+
+
+void
+bootimg_print_image_hdr (boot_img_hdr *hdr)
+{
+	int i;
+	printf ("   Image magic:   %s\n", hdr->magic);
+
+	printf ("   kernel_size:   0x%x\n", hdr->kernel_size);
+	printf ("   kernel_addr:   0x%x\n", hdr->kernel_addr);
+
+	printf ("   rdisk_size:   0x%x\n", hdr->ramdisk_size);
+	printf ("   rdisk_addr:   0x%x\n", hdr->ramdisk_addr);
+
+	printf ("   second_size:   0x%x\n", hdr->second_size);
+	printf ("   second_addr:   0x%x\n", hdr->second_addr);
+
+	printf ("   tags_addr:   0x%x\n", hdr->tags_addr);
+	printf ("   page_size:   0x%x\n", hdr->page_size);
+
+	printf ("   name:      %s\n", hdr->name);
+	printf ("   cmdline:   %s\n", hdr->cmdline);
+
+	for (i=0;i<8;i++)
+		printf ("   id[%d]:   0x%x\n", i, hdr->id[i]);
+}
+
+#if defined(CONFIG_CMD_FASTBOOT)
+
+#define _ALIGN(n,pagesz) ((n + (pagesz - 1)) & (~(pagesz - 1)))
+
+#define TOSTRING(x) #x
+#define STR(x) TOSTRING(x)
+int do_fdt(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
+
+int do_booti(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	u32 addr;
+	char *ptn = "boot";
+	int mmcc = -1;
+	boot_img_hdr *hdr;	
+	//unsigned dbt_addr = CONFIG_ADDR_ATAGS;
+	//unsigned cfg_machine_type = CONFIG_BOARD_MACH_TYPE;	
+	struct mmc* mmc = NULL;
+	u64 num_sectors;
+	int status;
+	char* fdt_addr[3] = { "fdt", "addr", STR(DEVICE_TREE) };
+	char* fdt_resize[2] = { "fdt", "resize"};
+	char* fdt_chosen[4] = { "fdt", "chosen", NULL, NULL}; 
+	char start[32];
+	char end[32];
+	
+	void (*theKernel)(int zero, int arch, void *);
+
+	if (argc < 2)
+		return -1;
+
+	if (!strcmp(argv[1], "mmc0")) {
+		mmcc = 0;
+	} else if (!strcmp(argv[1], "mmc1")) {
+		mmcc = 1;
+	} else {
+		return -1;
+	}
+	
+	if (check_fastboot()) {
+		goto fail;
+	}
+	mmc = find_mmc_device(mmcc);
+	if(mmc == NULL) {
+		return -1;
+	}
+	status = mmc_init(mmc);
+	if(status) {
+		printf("mmc init failed\n");
+		return status;
+	}
+
+	addr = CONFIG_ADDR_DOWNLOAD;	
+	hdr = (boot_img_hdr *) addr;
+	if (argc > 2)
+		ptn = argv[2];
+
+	if (mmcc != -1) {
+		struct fastboot_ptentry *pte;
+		unsigned sector;
+
+		pte = fastboot_flash_find_ptn(ptn);
+		if (!pte) {
+			printf("booti: cannot find '%s' partition\n", ptn);
+			goto fail;
+		}
+
+		//dbt_addr = load_dev_tree(dbt_addr);
+
+		num_sectors =  1;
+		mmc->block_dev.block_read(mmcc,pte->start,num_sectors,(void*)hdr);
+		
+		if (memcmp(hdr->magic, BOOT_MAGIC, 8)) {
+			printf("booti: bad boot image magic\n");
+			goto fail;
+		}
+
+		bootimg_print_image_hdr(hdr);
+		
+		//hdr->kernel_addr = KERNEL_ENTRY;
+		
+		/* read kernel */
+		printf("\nHeader: Kernel Addr:0x%x", hdr->kernel_addr);
+		printf("\nHeader: Kernel Size:0x%x", hdr->kernel_size);
+		printf("\nHeader: Ramdisk Addr:0x%x", hdr->ramdisk_addr);
+		printf("\nHeader: Ramdisk Size:0x%x", hdr->ramdisk_size);
+		printf("\n\nramdisk sector count:%d", (int)(hdr->ramdisk_size/mmc->block_dev.blksz));
+
+		sector = pte->start + (hdr->page_size / mmc->block_dev.blksz);
+		num_sectors = ((hdr->kernel_size/mmc->block_dev.blksz) + 1);
+		
+		status = mmc->block_dev.block_read(mmcc,sector, num_sectors,(void*)hdr->kernel_addr);
+		if(status < 0) {
+			printf("booti: Could not read kernel image\n");
+			goto fail;
+		}
+			
+		/* read ramdisk */
+		sector += _ALIGN(hdr->kernel_size, hdr->page_size) / mmc->block_dev.blksz;
+		num_sectors = ((hdr->ramdisk_size/mmc->block_dev.blksz) + 1);
+
+		status = mmc->block_dev.block_read(mmcc,sector,num_sectors,(void*)hdr->ramdisk_addr);
+		if(status < 0) {
+			printf("booti: Could not read ramdisk\n");
+			goto fail;
+		}
+
+	}
+	printf("kernel   @ %08x (%d)\n", hdr->kernel_addr, hdr->kernel_size);
+	printf("ramdisk  @ %08x (%d)\n", hdr->ramdisk_addr, hdr->ramdisk_size);
+
+	
+	//Set the initrd_start and initrd_end inside the FDT
+	status = do_fdt(NULL, 0, 3, fdt_addr);
+	if(status) {
+		printf("booti: Could not set FDT address\n");
+		goto fail;
+	}
+	status = do_fdt(NULL, 0, 4, fdt_resize);	
+	if(status) {
+		printf("booti: Could not resize FDT\n");
+		goto fail;
+	}
+	
+	fdt_chosen[2] = start;
+	fdt_chosen[3] = end;
+	sprintf(start, "0x%x", (unsigned int)hdr->ramdisk_addr);
+	sprintf(end, "0x%x", (unsigned int)(hdr->ramdisk_addr + hdr->ramdisk_size));
+	status = do_fdt(NULL, 0, 4, fdt_chosen);
+	if(status) {
+		printf("booti: Could not set initrd_start and initrd_end\n");
+		goto fail;
+	}
+	
+	
+	theKernel = (void (*)(int, int, void *))(hdr->kernel_addr);
+
+	printf("Starting kernel...\n");
+
+	theKernel(0, 0, NULL);
+	//theKernel(0, cfg_machine_type, (void *)dbt_addr);
+
+	puts("booti: Control returned to monitor - resetting...\n");
+fail:
+	do_fastboot(cmdtp, flag, argc, argv);
+	return 1;
+}
+
+
+U_BOOT_CMD(
+	booti,	3,	1,	do_booti,
+	"booti   - boot android bootimg from memory\n",
+	"<addr>\n    - boot application image stored in memory\n"
+	"\t'addr' should be the address of boot image which is zImage+ramdisk.img\n"
+);
+#endif
