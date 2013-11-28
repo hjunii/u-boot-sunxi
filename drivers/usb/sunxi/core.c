@@ -1,3 +1,7 @@
+#include "core.h"
+
+struct sunxi *global_sunxi;
+
 int usb_gadget_init_udc(void)
 {
 	return 0;
