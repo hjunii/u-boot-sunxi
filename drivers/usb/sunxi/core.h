@@ -37,6 +37,12 @@
 #define SUNXI_GSNPSREV_MASK	0xffff
 
 /* Global Registers */
+#define SUNXI_PCTL              0x0040
+#define SUNXI_ISCR		0x0400
+#define SUNXI_PHYCTL          	0x0404
+#define SUNXI_PHYBIST         	0x0408
+#define SUNXI_PHYTUNE         	0x040c
+
 #define SUNXI_GSBUSCFG0		0xc100
 #define SUNXI_GSBUSCFG1		0xc104
 #define SUNXI_GTXTHRCFG		0xc108
@@ -116,6 +122,10 @@
 
 #define SUNXI_GCTL_PRTCAP(n)	(((n) & (3 << 12)) >> 12)
 #define SUNXI_GCTL_PRTCAPDIR(n)	(n << 12)
+#define SUNXI_GCTL_PRTCAP_DPDM_CHANGE_DETECT 4
+#define SUNXI_GCTL_PRTCAP_ID_CHANGE_DETECT 5
+#define SUNXI_GCTL_PRTCAP_VBUS_CHANGE_DETECT 6
+#define SUNXI_GCTL_PRTCAP_FORCE_ID 14
 #define SUNXI_GCTL_PRTCAP_HOST	1
 #define SUNXI_GCTL_PRTCAP_DEVICE	2
 #define SUNXI_GCTL_PRTCAP_OTG	3
@@ -278,6 +288,42 @@
 #define SUNXI_DEPCMD_TYPE_ISOC		1
 #define SUNXI_DEPCMD_TYPE_BULK		2
 #define SUNXI_DEPCMD_TYPE_INTR		3
+
+/* bit position */
+
+/* USB Power Control for device only  */                 
+#define  SUNXI_BP_POWER_D_ISO_UPDATE_EN                  7
+#define  SUNXI_BP_POWER_D_SOFT_CONNECT                   6
+#define  SUNXI_BP_POWER_D_HIGH_SPEED_EN                  5
+#define  SUNXI_BP_POWER_D_HIGH_SPEED_FLAG                4
+#define  SUNXI_BP_POWER_D_RESET_FLAG                     3
+#define  SUNXI_BP_POWER_D_RESUME                         2
+#define  SUNXI_BP_POWER_D_SUSPEND                        1
+#define  SUNXI_BP_POWER_D_ENABLE_SUSPENDM                0
+
+/* Interface Status and Control */                       
+#define  SUNXI_BP_ISCR_VBUS_VALID_FROM_DATA		30
+#define  SUNXI_BP_ISCR_VBUS_VALID_FROM_VBUS        	29        
+#define  SUNXI_BP_ISCR_EXT_ID_STATUS               	28
+#define  SUNXI_BP_ISCR_EXT_DM_STATUS               	27
+#define  SUNXI_BP_ISCR_EXT_DP_STATUS               	26                                                 
+#define  SUNXI_BP_ISCR_MERGED_VBUS_STATUS          	25        
+#define  SUNXI_BP_ISCR_MERGED_ID_STATUS            	24
+
+#define  SUNXI_BP_ISCR_ID_PULLUP_EN                	17                                                 
+#define  SUNXI_BP_ISCR_DPDM_PULLUP_EN              	16
+#define  SUNXI_BP_ISCR_FORCE_ID                    	14
+#define  SUNXI_BP_ISCR_FORCE_VBUS_VALID            	12
+#define  SUNXI_BP_ISCR_VBUS_VALID_SRC             	10    
+
+#define  SUNXI_BP_ISCR_HOSC_EN                   	 7        
+#define  SUNXI_BP_ISCR_VBUS_CHANGE_DETECT        	 6
+#define  SUNXI_BP_ISCR_ID_CHANGE_DETECT          	 5        
+#define  SUNXI_BP_ISCR_DPDM_CHANGE_DETECT        	 4        
+#define  SUNXI_BP_ISCR_IRQ_ENABLE                	 3        
+#define  SUNXI_BP_ISCR_VBUS_CHANGE_DETECT_EN     	 2        
+#define  SUNXI_BP_ISCR_ID_CHANGE_DETECT_EN       	 1        
+#define  SUNXI_BP_ISCR_DPDM_CHANGE_DETECT_EN     	 0
 
 /* Structures */
 

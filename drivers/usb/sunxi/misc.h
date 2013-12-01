@@ -87,7 +87,7 @@ static inline long IS_ERR(const void *ptr)
 }
 
 #define dev_err(dev, format, ...) printf(format, ## __VA_ARGS__)
-#if 0
+#if 1
 #define dev_dbg(dev, format, ...) printf(format, ## __VA_ARGS__)
 #define dev_vdbg(dev, format, ...) printf(format, ## __VA_ARGS__)
 #define pr_debug(format, ...) printf(format, ## __VA_ARGS__)

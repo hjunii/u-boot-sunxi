@@ -356,8 +356,6 @@ static int sunxi_alloc_trb_pool(struct sunxi_ep *dep)
 {
 	struct sunxi		*sunxi = dep->sunxi;
 
-	printf ("%s\n", __FUNCTION__);
-
 	if (dep->trb_pool)
 		return 0;
 
@@ -505,8 +503,6 @@ static int __sunxi_gadget_ep_enable(struct sunxi_ep *dep,
 	struct sunxi		*sunxi = dep->sunxi;
 	u32			reg;
 	int			ret = -ENOMEM;
-
-	printf ("%s\n", __FUNCTION__);
 
 	if (!(dep->flags & SUNXI_EP_ENABLED)) {
 		ret = sunxi_gadget_start_config(sunxi, dep);
@@ -1362,8 +1358,6 @@ static int sunxi_gadget_start(struct usb_gadget *g,
 	int			ret = 0;
 	u32			reg;
 
-	printf ("%s\n", __FUNCTION__);
-
 	if (sunxi->gadget_driver) {
 		dev_err(sunxi->dev, "%s is already bound\n",
 				sunxi->gadget.name);
@@ -1373,10 +1367,9 @@ static int sunxi_gadget_start(struct usb_gadget *g,
 
 	sunxi->gadget_driver	= driver;
 
-	reg = sunxi_readl(sunxi->regs, SUNXI_DCFG);
-	reg &= ~(SUNXI_DCFG_SPEED_MASK);
-	reg |= SUNXI_DCFG_SUPERSPEED ;
-	sunxi_writel(sunxi->regs, SUNXI_DCFG, reg);
+	// USBC_Dev_ConfigTransferMode(udc.bsp, USBC_TS_TYPE_BULK, USBC_TS_MODE_HS)
+	clrbits_8(sunxi->regs + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_ISO_UPDATE_EN);
+	clrbits_8(sunxi->regs + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_HIGH_SPEED_EN);
 
 	sunxi->start_config_issued = false;
 
@@ -1445,7 +1438,6 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 {
 	int ret;
 
-	printf ("%s\n", __FUNCTION__);
 	ret = bind(&global_sunxi->gadget);
 	if (ret)
 		return ret;
@@ -2361,8 +2353,6 @@ int __devinit sunxi_gadget_init(struct sunxi *sunxi)
 	u32					reg;
 	int					ret;
 
-	printf ("%s\n", __FUNCTION__);
-
 	sunxi->ctrl_req = dma_alloc_coherent(sunxi->dev, sizeof(*sunxi->ctrl_req),
 			&sunxi->ctrl_req_addr, GFP_KERNEL);
 	if (!sunxi->ctrl_req) {
@@ -2420,8 +2410,6 @@ int __devinit sunxi_gadget_init(struct sunxi *sunxi)
 	if (ret)
 		goto err4;
 
-	printf("%s: success\n", __FUNCTION__);
-
 	return 0;
 
 	device_unregister(&sunxi->gadget.dev);
@@ -2475,7 +2463,6 @@ void sunxi_gadget_exit(struct sunxi *sunxi)
 
 int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 {
-	printf ("%s\n", __FUNCTION__);
 	return usb_gadget_probe_driver(driver, driver->bind);
 }
 
@@ -2486,7 +2473,6 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 {
 	struct sunxi		*sunxi = the_sunxi;
-	printf ("%s\n", __FUNCTION__);
 
 	if (!driver || !driver->unbind)
 		return -EINVAL;
