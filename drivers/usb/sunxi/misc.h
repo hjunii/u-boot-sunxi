@@ -6,10 +6,9 @@
 #include <asm/io.h>
 #include <errno.h>
 
-#define DWC3_USB_REGS_SIZE (CONFIG_USB_DWC3_UDC_REGS - \
-		CONFIG_USB_DWC3_UDC_REGS_END + 1)
-#define DWC3_WRAPPER_REGS_SIZE (CONFIG_USB_DWC3_WRAP_REGS - \
-		CONFIG_USB_DWC3_WRAP_REGS_END + 1)
+#define SUNXI_USB_REGS_SIZE (SUNXI_USB1_BASE - SUNXI_USB0_BASE)
+#define SUNXI_WRAPPER_REGS_SIZE (CONFIG_USB_SUNXI_WRAP_REGS - \
+		CONFIG_USB_SUNXI_WRAP_REGS_END + 1)
 
 #define upper_32_bits(n) ((u32)(((n) >> 16) >> 16))
 #define lower_32_bits(n) ((u32)(n))

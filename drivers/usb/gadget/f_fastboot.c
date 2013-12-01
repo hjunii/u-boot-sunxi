@@ -133,6 +133,7 @@ static void fastboot_ep0_complete(struct usb_ep *ep, struct usb_request *req)
 
 static int fastboot_bind(struct usb_gadget *gadget)
 {
+	printf ("fastboot_bind\n");
 
 	g = gadget;
 	ep0_req = usb_ep_alloc_request(g->ep0, 0);
@@ -159,6 +160,8 @@ err:
 
 static void fastboot_unbind(struct usb_gadget *gadget)
 {
+	printf("fastboot_unbind\n");
+
 	usb_ep_free_request(g->ep0, ep0_req);
 	ep_in->driver_data = NULL;
 	ep_out->driver_data = NULL;
@@ -461,6 +464,8 @@ static int fastboot_setup_out_req(struct usb_gadget *gadget,
 static int fastboot_setup(struct usb_gadget *gadget,
 		const struct usb_ctrlrequest *req)
 {
+	printf ("fastboot_setup\n");
+
 	if ((req->bRequestType & USB_TYPE_MASK) != USB_TYPE_STANDARD)
 		return -1;
 
@@ -487,6 +492,8 @@ static int fastboot_setup(struct usb_gadget *gadget,
 
 static void fastboot_disconnect(struct usb_gadget *gadget)
 {
+	printf ("fasboot_disconnect\n");
+
 	fastboot_disable_ep(gadget);
 //	gadget_is_connected = 0;
 }

@@ -2,8 +2,8 @@ include $(TOPDIR)/config.mk
 
 LIB     := $(obj)libsunxi.o
 
-COBJS-$(CONFIG_USB_SUNXI) += core.o gadget.o #ep0.o
-COBJS-$(CONFIG_USB_SUNXI) += misc.o #dwc3_phy.o
+COBJS-$(CONFIG_USB_SUNXI) += core.o gadget.o ep0.o
+COBJS-$(CONFIG_USB_SUNXI) += misc.o sunxi_phy.o
 
 COBJS   := $(COBJS-y)
 SRCS    := $(COBJS:.o=.c)
