@@ -19,7 +19,7 @@ endif
 # new USB gadget layer dependencies
 ifdef CONFIG_USB_GADGET
 COBJS-$(CONFIG_USB_GADGET_S3C_UDC_OTG) += s3c_udc_otg.o
-COBJS-$(CONFIG_USB_GADGET_SUNXI_UDC_OTG) += sunxi_udc_otg.o
+#COBJS-$(CONFIG_USB_GADGET_SUNXI_UDC_OTG) += sunxi_udc_otg.o
 COBJS-$(CONFIG_USB_GADGET_FOTG210) += fotg210.o
 COBJS-$(CONFIG_USBDOWNLOAD_GADGET) += g_dnl.o
 COBJS-$(CONFIG_DFU_FUNCTION) += f_dfu.o
@@ -44,7 +44,7 @@ endif
 
 ifdef CONFIG_CMD_FASTBOOT
 COBJS-y += f_fastboot.o u_fastboot.o
-#COBJS-y += epautoconf.o usbstring.o
+COBJS-y += epautoconf.o usbstring.o
 endif
 
 COBJS	:= $(COBJS-y)

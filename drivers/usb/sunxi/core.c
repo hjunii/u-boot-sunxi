@@ -59,17 +59,6 @@ void sunxi_set_mode(struct sunxi *sunxi, u32 mode)
 	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
 
 	sunxi_writel(sunxi->regs, SUNXI_ISCR, reg);
-
-	// USBC_ForceVbusValid(udc.bsp, USBC_VBUS_TYPE_HIGH)
-	reg = sunxi_readl(sunxi->regs, SUNXI_ISCR);
-
-	reg |= (0x03 << SUNXI_BP_ISCR_FORCE_VBUS_VALID);
-
-	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
-	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
-	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
-
-	sunxi_writel(sunxi->regs, SUNXI_ISCR, reg);
 }
 
 /**

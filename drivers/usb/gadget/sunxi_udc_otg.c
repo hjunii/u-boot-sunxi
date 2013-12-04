@@ -26,7 +26,7 @@
 
 #define OTG_DMA_MODE		1
 
-#define DEBUG_SETUP 0
+#define DEBUG_SETUP 1
 #define DEBUG_EP0 0
 #define DEBUG_ISR 0
 #define DEBUG_OUT_EP 0
@@ -927,7 +927,7 @@ static struct sunxi_udc memory = {
 int sunxi_udc_probe()
 {
 	struct sunxi_udc *dev = &memory;
-	int retval = 1, i;
+	int retval = 0, i;
 
 	debug("%s: %p\n", __func__, dev);
 

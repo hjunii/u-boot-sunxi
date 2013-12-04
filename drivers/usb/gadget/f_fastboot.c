@@ -138,18 +138,27 @@ static int fastboot_bind(struct usb_gadget *gadget)
 	g = gadget;
 	ep0_req = usb_ep_alloc_request(g->ep0, 0);
 	if (!ep0_req)
+	{
+		printf("!ep_req\n");
 		goto err;
+	}
 	ep0_req->buf = ep0_buffer;
 	ep0_req->complete = fastboot_ep0_complete;
 
 	ep_in = usb_ep_autoconfig(gadget, &fs_ep_in);
 	if (!ep_in)
+	{
+		printf("!fs_ep_in\n");
 		goto err;
+	}
 	ep_in->driver_data = ep_in;
 
 	ep_out = usb_ep_autoconfig(gadget, &fs_ep_out);
 	if (!ep_out)
+	{
+		printf("!ep_out\n");
 		goto err;
+	}
 	ep_out->driver_data = ep_out;
 
 	hs_ep_out.bEndpointAddress = fs_ep_out.bEndpointAddress;

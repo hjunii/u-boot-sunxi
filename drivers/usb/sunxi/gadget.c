@@ -396,7 +396,7 @@ static int sunxi_gadget_start_config(struct sunxi *sunxi, struct sunxi_ep *dep)
 	struct sunxi_gadget_ep_cmd_params params;
 	u32			cmd;
 
-	printf ("%s\n", __FUNCTION__);
+	printf ("%s dep->numer = %d\n", __FUNCTION__, dep->number);
 
 	memset(&params, 0x00, sizeof(params));
 	if (dep->number != 1) {
@@ -422,7 +422,7 @@ static int sunxi_gadget_set_ep_config(struct sunxi *sunxi, struct sunxi_ep *dep,
 {
 	struct sunxi_gadget_ep_cmd_params params;
 
-	printf ("%s\n", __FUNCTION__);
+	printf ("%s dep->number = %d\n", __FUNCTION__, dep->number);
 
 	memset(&params, 0x00, sizeof(params));
 
@@ -2409,6 +2409,17 @@ int __devinit sunxi_gadget_init(struct sunxi *sunxi)
 	ret = sunxi_gadget_init_endpoints(sunxi);
 	if (ret)
 		goto err4;
+
+	// USBC_ForceVbusValid(udc.bsp, USBC_VBUS_TYPE_HIGH)
+	reg = sunxi_readl(sunxi->regs, SUNXI_ISCR);
+
+	reg |= (0x03 << SUNXI_BP_ISCR_FORCE_VBUS_VALID);
+
+	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
+	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
+	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
+
+	sunxi_writel(sunxi->regs, SUNXI_ISCR, reg);
 
 	return 0;
 
