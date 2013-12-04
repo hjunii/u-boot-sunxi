@@ -79,7 +79,9 @@ struct sunxi_udc {
 	struct usb_gadget gadget;
 	struct usb_gadget_driver *driver;
 
-	struct sunxi_plat_otg_data *pdata;
+	u32 usb_base;
+	u32 sram_base;                      
+	u32 ccmu_base;
 
 	void *dma_buf[SUNXI_MAX_ENDPOINTS+1];
 	dma_addr_t dma_addr[SUNXI_MAX_ENDPOINTS+1];
@@ -102,13 +104,6 @@ extern void otg_phy_init(struct sunxi_udc *dev);
 extern void otg_phy_off(struct sunxi_udc *dev);
 
 extern void sunxi_udc_ep_set_stall(struct sunxi_ep *ep);
-extern int sunxi_udc_probe(struct sunxi_plat_otg_data *pdata);
+extern int sunxi_udc_probe();
 
-struct sunxi_plat_otg_data {
-	int		(*phy_control)(int on);
-	unsigned int	regs_phy;
-	unsigned int	regs_otg;
-	unsigned int    usb_phy_ctrl;
-	unsigned int    usb_flags;
-};
 #endif
