@@ -307,14 +307,85 @@ int sunxi_send_gadget_generic_command(struct sunxi *sunxi, int cmd, u32 param)
 	} while (1);
 }
 
+#define BULK_IN_EP_INDEX        1       /* tx */
+#define BULK_OUT_EP_INDEX       2       /* rx */
+
 int sunxi_send_gadget_ep_cmd(struct sunxi *sunxi, unsigned ep,
 		unsigned cmd, struct sunxi_gadget_ep_cmd_params *params)
 {
 	u32			timeout = 500;
 	u32			reg;
+	u32 			temp;
+	u32 			size;
 
 	printf ("%s\n", __FUNCTION__);
 
+	if (ep == 0) 
+	{
+		// USBC_SelectActiveEp(udc.bsp, BULK_IN_EP_INDEX);
+		writeb(BULK_IN_EP_INDEX, sunxi->regs + SUNXI_EPIND);
+		// USBC_Dev_ConfigEp(udc.bsp, USBC_TS_TYPE_BULK, USBC_EP_TYPE_TX, 1, udc.bulk_ep_size & 0x7ff);
+		reg = (1 << SUNXI_BP_TXCSR_D_MODE);
+		reg |= (1 << SUNXI_BP_TXCSR_D_CLEAR_DATA_TOGGLE);
+		reg |= (1 << SUNXI_BP_TXCSR_D_FLUSH_FIFO);
+		writew(reg, sunxi->regs + SUNXI_TXCSR);
+		writew(reg, sunxi->regs + SUNXI_TXCSR);
+		reg = readw(sunxi->regs + SUNXI_TXMAXP);
+		reg |= (512 & 0x7ff) & ((1 << SUNXI_BP_TXMAXP_PACKET_COUNT) - 1);
+		writew(reg, sunxi->regs + SUNXI_TXMAXP);
+		clrbits_le16(sunxi->regs + SUNXI_TXCSR, 1 << SUNXI_BP_TXCSR_D_ISO);
+		// USBC_ConfigFifo(udc.bsp, USBC_EP_TYPE_TX, 1, udc.fifo_size, 1024);
+		temp = 0;
+		size = 0;
+		temp = 512 + 511;
+		temp &= ~511;
+		temp >>= 3;
+		temp >>= 1;
+		while(temp){
+			size++;
+			temp >>= 1;
+		}
+		writew(1024 >> 3, sunxi->regs + SUNXI_TXFIFOAD);
+		writeb(size & 0x0f, sunxi->regs + SUNXI_TXFIFOSZ);
+		setbits_8(sunxi->regs + SUNXI_TXFIFOSZ, 1 << SUNXI_BP_TXFIFOSZ_DPB);
+		// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_TX, BULK_IN_EP_INDEX);
+		setbits_le16(sunxi->regs + SUNXI_INTTxE, 1 << BULK_IN_EP_INDEX);
+
+	}
+	else
+	{
+		// USBC_SelectActiveEp(udc.bsp, BULK_OUT_EP_INDEX);
+		writeb(BULK_OUT_EP_INDEX, sunxi->regs + SUNXI_EPIND);
+		// USBC_Dev_ConfigEp(udc.bsp, USBC_TS_TYPE_BULK, USBC_EP_TYPE_RX, 1, udc.bulk_ep_size & 0x7ff);
+		reg = (1 << SUNXI_BP_RXCSR_D_CLEAR_DATA_TOGGLE) | (1 << SUNXI_BP_RXCSR_D_FLUSH_FIFO);
+		writew(reg, sunxi->regs + SUNXI_RXCSR);
+		writew(reg, sunxi->regs + SUNXI_RXCSR);
+		reg = readw(sunxi->regs + SUNXI_RXMAXP);
+		reg |= (512 & 0x7ff) & ((1 << SUNXI_BP_RXMAXP_PACKET_COUNT) - 1);
+		writew(reg, sunxi->regs + SUNXI_RXMAXP);
+		clrbits_le16(sunxi->regs + SUNXI_RXCSR, 1 << SUNXI_BP_RXCSR_D_ISO);
+		// USBC_ConfigFifo(udc.bsp, USBC_EP_TYPE_RX, 1, udc.fifo_size, 2048);
+		temp = 0;
+		size = 0;
+		temp = 512 + 511;
+		temp &= ~511;
+		temp >>= 3;
+		temp >>= 1;
+		while(temp){
+			size++;
+			temp >>= 1;
+		}
+		writew(2048 >> 3, sunxi->regs + SUNXI_RXFIFOAD);
+		writeb(size & 0x0f, sunxi->regs + SUNXI_RXFIFOSZ);
+		setbits_8(sunxi->regs + SUNXI_RXFIFOSZ, 1 << SUNXI_BP_RXFIFOSZ_DPB);
+		// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_RX, BULK_OUT_EP_INDEX);
+		setbits_le16(sunxi->regs + SUNXI_INTRxE, 1 << BULK_OUT_EP_INDEX);
+
+	}
+
+	return 0;
+
+#if 0
 	sunxi_writel(sunxi->regs, SUNXI_DEPCMDPAR0(ep), params->param0);
 	sunxi_writel(sunxi->regs, SUNXI_DEPCMDPAR1(ep), params->param1);
 	sunxi_writel(sunxi->regs, SUNXI_DEPCMDPAR2(ep), params->param2);
@@ -340,6 +411,7 @@ int sunxi_send_gadget_ep_cmd(struct sunxi *sunxi, unsigned ep,
 
 		udelay(1);
 	} while (1);
+#endif
 }
 
 static dma_addr_t sunxi_trb_dma_offset(struct sunxi_ep *dep,
@@ -1358,6 +1430,8 @@ static int sunxi_gadget_start(struct usb_gadget *g,
 	int			ret = 0;
 	u32			reg;
 
+	printf ("%s\n", __FUNCTION__);
+
 	if (sunxi->gadget_driver) {
 		dev_err(sunxi->dev, "%s is already bound\n",
 				sunxi->gadget.name);
@@ -1367,9 +1441,81 @@ static int sunxi_gadget_start(struct usb_gadget *g,
 
 	sunxi->gadget_driver	= driver;
 
-	// USBC_Dev_ConfigTransferMode(udc.bsp, USBC_TS_TYPE_BULK, USBC_TS_MODE_HS)
+	// USBC_Dev_ConectSwitch(udc.bsp, USBC_DEVICE_SWITCH_OFF);
+	clrbits_8(sunxi->regs + SUNXI_PCTL, 0x1 << SUNXI_BP_POWER_D_SOFT_CONNECT);
+
+	// USBC_EnableDpDmPullUp(udc.bsp);
+	reg = readl(sunxi->regs + SUNXI_ISCR);
+	reg |= (1 << SUNXI_BP_ISCR_DPDM_PULLUP_EN);
+
+	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
+	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
+	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
+
+	writel(reg, sunxi->regs + SUNXI_ISCR);
+
+	// USBC_EnableIdPullUp(udc.bsp);
+	reg = readl(sunxi->regs + SUNXI_ISCR);
+	reg |= (1 << SUNXI_BP_ISCR_ID_PULLUP_EN);
+
+	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
+	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
+	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
+
+	writel(reg, sunxi->regs + SUNXI_ISCR);
+
+	// USBC_SelectBus(udc.bsp, USBC_IO_TYPE_PIO, 0, 0);
+	reg = readb(sunxi->regs + SUNXI_VEND0);
+	reg &= 0x00;
+	writeb(reg, sunxi->regs + SUNXI_VEND0);
+
+	// USBC_ConfigFIFO_Base(udc.bsp, udc.sram_base, USBC_FIFO_MODE_8K);
+	reg = readl(SUNXI_SRAMC_BASE + 0x04);
+	reg |= (1 << 0);
+	writel(reg, SUNXI_SRAMC_BASE + 0x04);
+
+	// USBC_EnhanceSignal(udc.bsp);
+	// NONE
+	
+	// USBC_Dev_ConfigTransferMode(udc.bsp, USBC_TS_TYPE_BULK, USBC_TS_MODE_HS);
 	clrbits_8(sunxi->regs + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_ISO_UPDATE_EN);
 	clrbits_8(sunxi->regs + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_HIGH_SPEED_EN);
+
+	/* disable all interrupt */
+	// USBC_INT_DisableUsbMiscAll(udc.bsp);
+	writeb(0, sunxi->regs + SUNXI_INTUSBE);
+	// USBC_INT_DisableEpAll(udc.bsp, USBC_EP_TYPE_RX);
+	writew(0, sunxi->regs + SUNXI_INTRxE);
+	// USBC_INT_DisableEpAll(udc.bsp, USBC_EP_TYPE_TX);
+	writew(0, sunxi->regs + SUNXI_INTTxE);
+
+	// USBC_INT_EnableUsbMiscUint(udc.bsp, USBC_BP_INTUSB_SOF);
+	reg = readb(sunxi->regs + SUNXI_INTUSBE);
+	reg |= SUNXI_BP_INTUSB_SOF;
+	writeb(reg, sunxi->regs + SUNXI_INTUSBE);
+	// USBC_INT_EnableUsbMiscUint(udc.bsp, USBC_BP_INTUSB_SUSPEND);
+	reg = readb(sunxi->regs + SUNXI_INTUSBE);
+	reg |= SUNXI_BP_INTUSB_SUSPEND;
+	writeb(reg, sunxi->regs + SUNXI_INTUSBE);
+	// USBC_INT_EnableUsbMiscUint(udc.bsp, USBC_BP_INTUSB_RESUME);
+	reg = readb(sunxi->regs + SUNXI_INTUSBE);
+	reg |= SUNXI_BP_INTUSB_RESUME;
+	writeb(reg, sunxi->regs + SUNXI_INTUSBE);
+	// USBC_INT_EnableUsbMiscUint(udc.bsp, USBC_BP_INTUSB_RESET);
+	reg = readb(sunxi->regs + SUNXI_INTUSBE);
+	reg |= SUNXI_BP_INTUSB_RESET;
+	writeb(reg, sunxi->regs + SUNXI_INTUSBE);
+	// USBC_INT_EnableUsbMiscUint(udc.bsp, USBC_BP_INTUSB_DISCONNECT);
+	reg = readb(sunxi->regs + SUNXI_INTUSBE);
+	reg |= SUNXI_BP_INTUSB_DISCONNECT;
+	writeb(reg, sunxi->regs + SUNXI_INTUSBE);
+	// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_TX, 0);
+	setbits_le16(sunxi->regs + SUNXI_INTTxE, 1 << 0);
+
+	u8 old_ep_index = 0;
+
+	//old_ep_index = USBC_GetActiveEp(udc.bsp);
+	old_ep_index = readb(sunxi->regs + SUNXI_EPIND);
 
 	sunxi->start_config_issued = false;
 
@@ -1394,6 +1540,11 @@ static int sunxi_gadget_start(struct usb_gadget *g,
 	sunxi->ep0state = EP0_SETUP_PHASE;
 	sunxi_ep0_out_start(sunxi);
 
+	// USBC_SelectActiveEp(udc.bsp, old_ep_index);
+	writeb(old_ep_index, sunxi->regs + SUNXI_EPIND);
+
+	// USBC_Dev_ConectSwitch(udc.bsp, USBC_DEVICE_SWITCH_ON);
+	setbits_8(sunxi->regs + SUNXI_PCTL, 0x1 << SUNXI_BP_POWER_D_SOFT_CONNECT);
 
 	return 0;
 
@@ -2289,11 +2440,23 @@ irqreturn_t sunxi_interrupt(int irq, void *_sunxi)
 	struct sunxi			*sunxi = _sunxi;
 	int				i;
 	irqreturn_t			ret = IRQ_NONE;
-	u32				irq_any;
-
-	printf ("%s\n", __FUNCTION__);
+	//u32				irq_any;
+	u8				irq_any;
+	u16				tx_irq;
+	u16				rx_irq;
 
 	spin_lock(&sunxi->lock);
+
+	// USBC_INT_MiscPending(udc.bsp);
+	irq_any = sunxi_readl(sunxi->regs, SUNXI_INTUSB);
+	// USBC_INT_EpPending(udc.bsp, USBC_EP_TYPE_TX);
+	tx_irq = readw(sunxi->regs + SUNXI_INTTx);
+	// USBC_INT_EpPending(udc.bsp, USBC_EP_TYPE_RX);
+	rx_irq = readw(sunxi->regs + SUNXI_INTRx);
+
+	printf ("%s irq_any = %x tx_irq = %d rx_irq = %d \n", __FUNCTION__, irq_any, tx_irq, rx_irq);
+#if 0
+
 	irq_any = readl(USBOTGSS_IRQSTATUS_0);
 
 	if (!irq_any) { 
@@ -2306,6 +2469,7 @@ irqreturn_t sunxi_interrupt(int irq, void *_sunxi)
 		if (status == IRQ_HANDLED)
 			ret = status;
 	}
+#endif
 exit:
 	spin_unlock(&sunxi->lock);
 	return ret;

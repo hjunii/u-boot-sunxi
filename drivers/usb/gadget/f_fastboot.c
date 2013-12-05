@@ -162,6 +162,9 @@ static int fastboot_bind(struct usb_gadget *gadget)
 	ep_out->driver_data = ep_out;
 
 	hs_ep_out.bEndpointAddress = fs_ep_out.bEndpointAddress;
+
+	printf ("fastboot_bind end\n");
+
 	return 0;
 err:
 	return -1;
