@@ -141,7 +141,8 @@ static int __devinit sunxi_alloc_event_buffers(struct sunxi *sunxi, unsigned len
 	int			num;
 	int			i;
 
-	num = SUNXI_NUM_INT(sunxi->hwparams.hwparams1);
+	//num = SUNXI_NUM_INT(sunxi->hwparams.hwparams1);
+	num = 1;
 	sunxi->num_event_buffers = num;
 
 	sunxi->ev_buffs = kzalloc(sizeof(*sunxi->ev_buffs) * num, GFP_KERNEL);

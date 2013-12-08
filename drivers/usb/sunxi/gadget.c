@@ -2455,13 +2455,11 @@ irqreturn_t sunxi_interrupt(int irq, void *_sunxi)
 	rx_irq = readw(sunxi->regs + SUNXI_INTRx);
 
 	printf ("%s irq_any = %x tx_irq = %d rx_irq = %d \n", __FUNCTION__, irq_any, tx_irq, rx_irq);
-#if 0
-
-	irq_any = readl(USBOTGSS_IRQSTATUS_0);
 
 	if (!irq_any) { 
 		goto exit;
-	}	
+	}
+	printf("sunxi->num_event_buffers = %d\n", sunxi->num_event_buffers);
 	for (i = 0; i < sunxi->num_event_buffers; i++) {
 		irqreturn_t status;
 
@@ -2469,7 +2467,6 @@ irqreturn_t sunxi_interrupt(int irq, void *_sunxi)
 		if (status == IRQ_HANDLED)
 			ret = status;
 	}
-#endif
 exit:
 	spin_unlock(&sunxi->lock);
 	return ret;

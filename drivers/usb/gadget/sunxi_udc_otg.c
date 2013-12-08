@@ -272,8 +272,6 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 	debug_cond(DEBUG_SETUP != 0, "%s: %s\n", __func__, "no name");
 
 	if (!driver
-	    || (driver->speed != USB_SPEED_FULL
-		&& driver->speed != USB_SPEED_HIGH)
 	    || !driver->bind || !driver->disconnect || !driver->setup)
 		return -EINVAL;
 	if (!dev)
@@ -705,7 +703,6 @@ static int sunxi_ep_enable(struct usb_ep *_ep,
  */
 static int sunxi_ep_disable(struct usb_ep *_ep)
 {
-#if 0
 	struct sunxi_ep *ep;
 	unsigned long flags;
 
@@ -729,14 +726,13 @@ static int sunxi_ep_disable(struct usb_ep *_ep)
 	spin_unlock_irqrestore(&ep->dev->lock, flags);
 
 	debug("%s: disabled %s\n", __func__, _ep->name);
-#endif
+
 	return 0;
 }
 
 static struct usb_request *sunxi_alloc_request(struct usb_ep *ep,
 					     gfp_t gfp_flags)
 {
-#if 0
 	struct sunxi_request *req;
 
 	debug("%s: %s %p\n", __func__, ep->name, ep);
@@ -749,14 +745,10 @@ static struct usb_request *sunxi_alloc_request(struct usb_ep *ep,
 	INIT_LIST_HEAD(&req->queue);
 
 	return &req->req;
-#else
-	return NULL;
-#endif
 }
 
 static void sunxi_free_request(struct usb_ep *ep, struct usb_request *_req)
 {
-#if 0
 	struct sunxi_request *req;
 
 	debug("%s: %p\n", __func__, ep);
@@ -764,13 +756,11 @@ static void sunxi_free_request(struct usb_ep *ep, struct usb_request *_req)
 	req = container_of(_req, struct sunxi_request, req);
 	WARN_ON(!list_empty(&req->queue));
 	kfree(req);
-#endif
 }
 
 /* dequeue JUST ONE request */
 static int sunxi_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
-#if 0
 	struct sunxi_ep *ep;
 	struct sunxi_request *req;
 	unsigned long flags;
@@ -796,7 +786,7 @@ static int sunxi_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	done(ep, req, -ECONNRESET);
 
 	spin_unlock_irqrestore(&ep->dev->lock, flags);
-#endif
+
 	return 0;
 }
 

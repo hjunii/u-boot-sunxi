@@ -507,7 +507,7 @@ static void fastboot_disconnect(struct usb_gadget *gadget)
 	printf ("fasboot_disconnect\n");
 
 	fastboot_disable_ep(gadget);
-//	gadget_is_connected = 0;
+	gadget_is_connected = 0;
 }
 
 struct usb_gadget_driver fast_gadget = {
