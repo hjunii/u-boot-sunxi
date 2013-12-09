@@ -28,7 +28,7 @@
 
 #define DEBUG_SETUP 1
 #define DEBUG_EP0 0
-#define DEBUG_ISR 0
+#define DEBUG_ISR 1
 #define DEBUG_OUT_EP 0
 #define DEBUG_IN_EP 0
 
@@ -957,12 +957,5 @@ void usb_gadget_exit_udc(void)
 
 int usb_gadget_handle_interrupts()
 {
-#if 0
-	u32 intr_status = readl(&reg->gintsts);
-	u32 gintmsk = readl(&reg->gintmsk);
-
-	if (intr_status & gintmsk)
-		return sunxi_udc_irq(1, (void *)the_controller);
-#endif
-	return 0;
+	return sunxi_udc_irq(1, (void *)the_controller);
 }

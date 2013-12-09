@@ -474,28 +474,149 @@ static void process_ep_out_intr(struct sunxi_udc *dev)
  */
 static int sunxi_udc_irq(int irq, void *_dev)
 {
-#if 0
 	struct sunxi_udc *dev = _dev;
-	u32 intr_status;
-	u32 usb_status, gintmsk;
 	unsigned long flags;
+	u8 usb_irq = 0;
+	u16 tx_irq = 0;
+	u16 rx_irq = 0;
+	int i = 0;
 
 	spin_lock_irqsave(&dev->lock, flags);
 
-	intr_status = readl(&reg->gintsts);
-	gintmsk = readl(&reg->gintmsk);
+	// USBC_INT_MiscPending(udc.bsp);
+	usb_irq = readl(dev->usb_base + SUNXI_INTUSB);
+	// USBC_INT_EpPending(udc.bsp, USBC_EP_TYPE_TX);
+	tx_irq = readw(dev->usb_base + SUNXI_INTTx);
+	// USBC_INT_EpPending(udc.bsp, USBC_EP_TYPE_RX);
+	rx_irq = readw(dev->usb_base + SUNXI_INTRx);
+
+	// usb_irq = filtrate_irq_misc(usb_irq)
+	usb_irq &= ~(SUNXI_INTUSB_VBUS_ERROR | SUNXI_INTUSB_SESSION_REQ | SUNXI_INTUSB_CONNECT);
+	//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_VBUS_ERROR);
+	writeb(SUNXI_INTUSB_VBUS_ERROR, dev->usb_base + SUNXI_INTUSB);
+	//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_SESSION_REQ);
+	writeb(SUNXI_INTUSB_SESSION_REQ, dev->usb_base + SUNXI_INTUSB);
+	//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_CONNECT);
+	writeb(SUNXI_INTUSB_CONNECT, dev->usb_base + SUNXI_INTUSB);
 
 	debug_cond(DEBUG_ISR,
-		  "\n*** %s : GINTSTS=0x%x(on state %s), GINTMSK : 0x%x,"
-		  "DAINT : 0x%x, DAINTMSK : 0x%x\n",
-		  __func__, intr_status, state_names[dev->ep0state], gintmsk,
-		  readl(&reg->daint), readl(&reg->daintmsk));
+		  "\n*** %s : usb_irq=0x%x(on state %s),"
+		  "\ntx_irq : 0x%x, rx_irq : 0x%x\n",
+		  __func__, usb_irq, state_names[dev->ep0state], tx_irq, rx_irq);
 
-	if (!intr_status) {
+
+	if (!usb_irq) {
 		spin_unlock_irqrestore(&dev->lock, flags);
 		return IRQ_HANDLED;
 	}
 
+	if (usb_irq & SUNXI_INTUSB_RESET)
+	{
+		debug_cond(DEBUG_ISR, "\tReset interrupt\n");
+
+		//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_RESET);
+		writeb(SUNXI_INTUSB_RESET, dev->usb_base + SUNXI_INTUSB);
+		//clear_all_irq();
+		//USBC_INT_ClearEpPendingAll(udc.bsp, USBC_EP_TYPE_TX);
+		writew(0xffff, dev->usb_base + SUNXI_INTTx);
+		//USBC_INT_ClearEpPendingAll(udc.bsp, USBC_EP_TYPE_RX);
+		writew(0xffff, dev->usb_base + SUNXI_INTRx);
+		//USBC_INT_ClearMiscPendingAll(udc.bsp);
+		writeb(0xff, dev->usb_base + SUNXI_INTUSB);
+
+		//USBC_SelectActiveEp(udc.bsp, 0);
+		writeb(0, dev->usb_base + SUNXI_EPIND);
+		//USBC_Dev_SetAddress_default(udc.bsp);
+		writeb(0x00, dev->usb_base + SUNXI_FADDR);
+
+		reconfig_usbd();
+		dev->ep0state = WAIT_FOR_SETUP;
+		reset_available = 0;
+		sunxi_udc_pre_setup();
+	}
+
+	if (usb_irq & SUNXI_INTUSB_RESUME)
+	{
+		debug_cond(DEBUG_ISR, "\tResume interrupt\n");
+
+		/* clear interrupt */
+		//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_RESUME);
+		writeb(SUNXI_INTUSB_RESUME, dev->usb_base + SUNXI_INTUSB);
+
+		if (dev->gadget.speed != USB_SPEED_UNKNOWN
+		    && dev->driver
+		    && dev->driver->resume) {
+
+			dev->driver->resume(&dev->gadget);
+		}
+	}
+
+	if (usb_irq & SUNXI_INTUSB_SUSPEND)
+	{
+		debug_cond(DEBUG_ISR, "\tSuspend interrupt\n");
+
+		/* clear interrupt */
+		//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_SUSPEND);
+		writeb(SUNXI_INTUSB_SUSPEND, dev->usb_base + SUNXI_INTUSB);
+
+		if (dev->gadget.speed != USB_SPEED_UNKNOWN
+				&& dev->driver) {
+			if (dev->driver->suspend)
+				dev->driver->suspend(&dev->gadget);
+		}
+	}
+
+	if (usb_irq & SUNXI_INTUSB_DISCONNECT)
+	{
+		debug_cond(DEBUG_ISR, "\tDisconnect interrupt\n");
+
+		//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_DISCONNECT);
+		writeb(SUNXI_INTUSB_DISCONNECT, dev->usb_base + SUNXI_INTUSB);
+
+		if (dev->gadget.speed != USB_SPEED_UNKNOWN
+				&& dev->driver) {
+			if (dev->driver->disconnect) {
+				spin_unlock_irqrestore(&dev->lock, flags);
+				dev->driver->disconnect(&dev->gadget);
+				spin_lock_irqsave(&dev->lock, flags);
+			}
+		}
+	}
+
+	if (usb_irq & SUNXI_INTUSB_SOF)
+	{
+		debug_cond(DEBUG_ISR, "\tSOF interrupt\n");
+
+		//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_SOF);
+		writeb(SUNXI_INTUSB_SOF, dev->usb_base + SUNXI_INTUSB);
+	}
+
+	if (tx_irq & SUNXI_INTTx_FLAG_EP0) {
+		//USBC_INT_ClearEpPending(udc.bsp, USBC_EP_TYPE_TX, 0);
+		writew(1, dev->usb_base + SUNXI_INTTx);
+	}
+
+	for (i = 1; i < 3; i++) {
+		u32 tmp = 1 << i;	
+		if (tx_irq & tmp) {
+			/* Clear the interrupt bit by setting it to 1 */
+			//USBC_INT_ClearEpPending(udc.bsp, USBC_EP_TYPE_TX, i);
+			writew((1 << i), dev->usb_base + SUNXI_INTTx);
+			process_ep_out_intr(dev);
+		}
+	}
+
+	for (i = 1; i < 3; i++) {
+		u32 tmp = 1 << i;	
+		if (rx_irq & tmp) {
+			/* Clear the interrupt bit by setting it to 1 */
+			//USBC_INT_ClearEpPending(udc.bsp, USBC_EP_TYPE_RX, i);
+			writew((1 << i), dev->usb_base + SUNXI_INTRx);
+			process_ep_in_intr(dev);
+		}
+	}
+
+#if 0
 	if (intr_status & INT_ENUMDONE) {
 		debug_cond(DEBUG_ISR, "\tSpeed Detection interrupt\n");
 
@@ -582,9 +703,9 @@ static int sunxi_udc_irq(int irq, void *_dev)
 
 	if (intr_status & INT_OUT_EP)
 		process_ep_out_intr(dev);
+#endif
 
 	spin_unlock_irqrestore(&dev->lock, flags);
-#endif
 
 	return IRQ_HANDLED;
 }

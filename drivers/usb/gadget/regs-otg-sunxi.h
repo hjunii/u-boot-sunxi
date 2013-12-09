@@ -329,4 +329,29 @@
 #define  SUNXI_PHYBIST         		0x0408
 #define  SUNXI_PHYTUNE         		0x040c
 
+/* interrupt flags for ep0 and the Tx ep1~4 */
+#define  SUNXI_INTTx_FLAG_EP5           (1 << SUNXI_BP_INTTx_FLAG_EP5)
+#define  SUNXI_INTTx_FLAG_EP4           (1 << SUNXI_BP_INTTx_FLAG_EP4)
+#define  SUNXI_INTTx_FLAG_EP3           (1 << SUNXI_BP_INTTx_FLAG_EP3)
+#define  SUNXI_INTTx_FLAG_EP2           (1 << SUNXI_BP_INTTx_FLAG_EP2)
+#define  SUNXI_INTTx_FLAG_EP1           (1 << SUNXI_BP_INTTx_FLAG_EP1)
+#define  SUNXI_INTTx_FLAG_EP0           (1 << SUNXI_BP_INTTx_FLAG_EP0)
+
+/* interrupt flags for Rx ep1~4 */
+#define  SUNXI_INTRx_FLAG_EP5           (1 << SUNXI_BP_INTRx_FLAG_EP5)
+#define  SUNXI_INTRx_FLAG_EP4           (1 << SUNXI_BP_INTRx_FLAG_EP4)
+#define  SUNXI_INTRx_FLAG_EP3           (1 << SUNXI_BP_INTRx_FLAG_EP3)
+#define  SUNXI_INTRx_FLAG_EP2           (1 << SUNXI_BP_INTRx_FLAG_EP2)
+#define  SUNXI_INTRx_FLAG_EP1           (1 << SUNXI_BP_INTRx_FLAG_EP1)
+
+/* USB interrupt */
+#define  SUNXI_INTUSB_VBUS_ERROR         (1 << SUNXI_BP_INTUSB_VBUS_ERROR)
+#define  SUNXI_INTUSB_SESSION_REQ        (1 << SUNXI_BP_INTUSB_SESSION_REQ)
+#define  SUNXI_INTUSB_DISCONNECT         (1 << SUNXI_BP_INTUSB_DISCONNECT)
+#define  SUNXI_INTUSB_CONNECT            (1 << SUNXI_BP_INTUSB_CONNECT)
+#define  SUNXI_INTUSB_SOF                (1 << SUNXI_BP_INTUSB_SOF)
+#define  SUNXI_INTUSB_RESET              (1 << SUNXI_BP_INTUSB_RESET)
+#define  SUNXI_INTUSB_RESUME             (1 << SUNXI_BP_INTUSB_RESUME)
+#define  SUNXI_INTUSB_SUSPEND            (1 << SUNXI_BP_INTUSB_SUSPEND)
+
 #endif
