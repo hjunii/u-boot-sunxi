@@ -27,16 +27,17 @@
 #define OTG_DMA_MODE		1
 
 #define DEBUG_SETUP 1
-#define DEBUG_EP0 0
+#define DEBUG_EP0 1
 #define DEBUG_ISR 1
-#define DEBUG_OUT_EP 0
-#define DEBUG_IN_EP 0
+#define DEBUG_OUT_EP 1
+#define DEBUG_IN_EP 1
 
 #include <usb/sunxi_udc.h>
 
 #define EP0_CON		0
 #define EP_MASK		0xF
 
+#define CTRL_EP_INDEX		0
 #define BULK_IN_EP_INDEX        1       /* tx */
 #define BULK_OUT_EP_INDEX       2       /* rx */
 

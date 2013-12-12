@@ -469,6 +469,37 @@ static void process_ep_out_intr(struct sunxi_udc *dev)
 #endif
 }
 
+static int sunxi_resume(struct sunxi_udc *dev)
+{
+	u8 old_ep_index = 0;
+
+	//old_ep_index = USBC_GetActiveEp(udc.bsp);
+	old_ep_index = readb(dev->usb_base + SUNXI_EPIND);
+	//USBC_SelectActiveEp(udc.bsp, CTRL_EP_INDEX);
+	writeb(CTRL_EP_INDEX, dev->usb_base + SUNXI_EPIND);
+
+	/* Host stopped last transaction */
+	if(readw(dev->usb_base + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_SETUP_END))
+	{
+		// USBC_Dev_Ctrl_ClearSetupEnd(udc.bsp);
+		setbits_le16(dev->usb_base + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SERVICED_SETUP_END));
+	}
+	
+	//USBC_SelectActiveEp(udc.bsp, old_ep_index);
+	writeb(old_ep_index, dev->usb_base + SUNXI_EPIND);
+	
+	/* Should we change the address ? */
+	/*
+	if(set_address){
+		USBC_Dev_SetAddress(udc.bsp, udc.address);
+		set_address = 0;		
+		DMSG_INFO("SetAddress: %d\n", udc.address);
+	}*/
+
+	sunxi_handle_ep0(dev);
+	return 0;
+}
+
 /*
  *	usb client interrupt handler.
  */
@@ -480,9 +511,15 @@ static int sunxi_udc_irq(int irq, void *_dev)
 	u16 tx_irq = 0;
 	u16 rx_irq = 0;
 	int i = 0;
+	u32 old_ep_index  = 0;
 
 	spin_lock_irqsave(&dev->lock, flags);
 
+	/* Save index */
+	//old_ep_index = USBC_GetActiveEp(udc.bsp);
+	old_ep_index = readb(dev->usb_base + SUNXI_EPIND);
+
+	/* Read status registers */
 	// USBC_INT_MiscPending(udc.bsp);
 	usb_irq = readl(dev->usb_base + SUNXI_INTUSB);
 	// USBC_INT_EpPending(udc.bsp, USBC_EP_TYPE_TX);
@@ -529,7 +566,7 @@ static int sunxi_udc_irq(int irq, void *_dev)
 		//USBC_Dev_SetAddress_default(udc.bsp);
 		writeb(0x00, dev->usb_base + SUNXI_FADDR);
 
-		reconfig_usbd();
+		//reconfig_usbd();
 		dev->ep0state = WAIT_FOR_SETUP;
 		reset_available = 0;
 		sunxi_udc_pre_setup();
@@ -615,6 +652,9 @@ static int sunxi_udc_irq(int irq, void *_dev)
 			process_ep_in_intr(dev);
 		}
 	}
+
+	// USBC_SelectActiveEp(udc.bsp, old_ep_index);
+	writeb(old_ep_index, dev->usb_base + SUNXI_EPIND);
 
 #if 0
 	if (intr_status & INT_ENUMDONE) {
@@ -857,23 +897,58 @@ static int write_fifo_ep0(struct sunxi_ep *ep, struct sunxi_request *req)
 
 int sunxi_fifo_read(struct sunxi_ep *ep, u32 *cp, int max)
 {
-#if 0
 	u32 bytes;
+
+	u8 old_ep_index = 0;
+
+	u32 fifo_count  = 0;
+	u32 fifo        = 0;
+
+	u8  *buf8  = NULL;
+	u32 *buf32 = NULL;
+	u32 i32 = 0;
+        u32 i8  = 0;
+	
+	//old_ep_index = USBC_GetActiveEp(udc.bsp);
+	old_ep_index = readb(ep->dev->usb_base + SUNXI_EPIND);
+	//USBC_SelectActiveEp(udc.bsp, CTRL_EP_INDEX);
+	writeb(CTRL_EP_INDEX, ep->dev->usb_base + SUNXI_EPIND);
+
+	//fifo = USBC_SelectFIFO(udc.bsp, CTRL_EP_INDEX);
+	fifo = ep->dev->usb_base + SUNXI_EPFIFOx(CTRL_EP_INDEX);
+	//fifo_count = USBC_ReadLenFromFifo(udc.bsp, USBC_EP_TYPE_EP0);
+	fifo_count = readw(ep->dev->usb_base + SUNXI_COUNT0);
+
+	//USBC_ReadPacket(udc.bsp, fifo, fifo_count, (void *)req);
+	buf32 = (__u32 *) cp;
+	i32 = fifo_count >> 2;
+	i8 = fifo_count & 0x03;
+	while (i32--)
+		*buf32++ = readl(fifo);
+	buf8 = (u8*) buf32;
+	while (i8--)
+		*buf8++ = readb(fifo);
+	//ReadDataStatusComplete(udc.bsp, USBC_EP_TYPE_EP0, 0);
+	/* clear irq */
+	//USBC_INT_ClearEpPending(hUSB, USBC_EP_TYPE_TX, 0);
+	writew(0xffff, ep->dev->usb_base + SUNXI_INTTx);
+	
+	//USBC_SelectActiveEp(udc.bsp, old_ep_index);
+	writeb(old_ep_index, ep->dev->usb_base + SUNXI_EPIND);
 
 	bytes = sizeof(struct usb_ctrlrequest);
 
+	/*
 	invalidate_dcache_range((unsigned long) ep->dev->dma_buf[ep_index(ep)],
 				(unsigned long) ep->dev->dma_buf[ep_index(ep)]
-				+ DMA_BUFFER_SIZE);
+				+ DMA_BUFFER_SIZE);*/
+
 
 	debug_cond(DEBUG_EP0 != 0,
 		   "%s: bytes=%d, ep_index=%d %p\n", __func__,
 		   bytes, ep_index(ep), ep->dev->dma_buf[ep_index(ep)]);
 
 	return bytes;
-#else
-	return 0;
-#endif
 }
 
 /**
@@ -1428,7 +1503,6 @@ static int sunxi_udc_set_feature(struct usb_ep *_ep)
  */
 void sunxi_ep0_setup(struct sunxi_udc *dev)
 {
-#if 0
 	struct sunxi_ep *ep = &dev->ep[0];
 	int i;
 	u8 ep_num;
@@ -1611,7 +1685,6 @@ void sunxi_ep0_setup(struct sunxi_udc *dev)
 			   "\tep0state = %s\n", state_names[dev->ep0state]);
 
 	}
-#endif
 }
 
 /*
@@ -1619,7 +1692,6 @@ void sunxi_ep0_setup(struct sunxi_udc *dev)
  */
 static void sunxi_handle_ep0(struct sunxi_udc *dev)
 {
-#if 0
 	if (dev->ep0state == WAIT_FOR_SETUP) {
 		debug_cond(DEBUG_OUT_EP != 0,
 			   "%s: WAIT_FOR_SETUP\n", __func__);
@@ -1630,7 +1702,6 @@ static void sunxi_handle_ep0(struct sunxi_udc *dev)
 			   "%s: strange state!!(state = %s)\n",
 			__func__, state_names[dev->ep0state]);
 	}
-#endif
 }
 
 static void sunxi_ep0_kick(struct sunxi_udc *dev, struct sunxi_ep *ep)
