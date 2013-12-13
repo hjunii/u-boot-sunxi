@@ -512,6 +512,7 @@ static int sunxi_udc_irq(int irq, void *_dev)
 	u16 rx_irq = 0;
 	int i = 0;
 	u32 old_ep_index  = 0;
+	int ret = 0;
 
 	spin_lock_irqsave(&dev->lock, flags);
 
@@ -586,6 +587,14 @@ static int sunxi_udc_irq(int irq, void *_dev)
 
 			dev->driver->resume(&dev->gadget);
 		}
+
+		ret = sunxi_resume(dev);
+		if (ret != 0)
+		{
+			printf("err: sunxi_resume failed\n");
+			spin_unlock_irqrestore(&dev->lock, flags);
+			return IRQ_HANDLED;
+		}
 	}
 
 	if (usb_irq & SUNXI_INTUSB_SUSPEND)
@@ -626,6 +635,14 @@ static int sunxi_udc_irq(int irq, void *_dev)
 
 		//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_SOF);
 		writeb(SUNXI_INTUSB_SOF, dev->usb_base + SUNXI_INTUSB);
+
+		ret = sunxi_resume(dev);
+		if (ret != 0)
+		{
+			printf("err: sunxi_resume failed\n");
+			spin_unlock_irqrestore(&dev->lock, flags);
+			return IRQ_HANDLED;
+		}
 	}
 
 	if (tx_irq & SUNXI_INTTx_FLAG_EP0) {
@@ -639,7 +656,7 @@ static int sunxi_udc_irq(int irq, void *_dev)
 			/* Clear the interrupt bit by setting it to 1 */
 			//USBC_INT_ClearEpPending(udc.bsp, USBC_EP_TYPE_TX, i);
 			writew((1 << i), dev->usb_base + SUNXI_INTTx);
-			process_ep_out_intr(dev);
+			//process_ep_out_intr(dev);
 		}
 	}
 
@@ -649,7 +666,7 @@ static int sunxi_udc_irq(int irq, void *_dev)
 			/* Clear the interrupt bit by setting it to 1 */
 			//USBC_INT_ClearEpPending(udc.bsp, USBC_EP_TYPE_RX, i);
 			writew((1 << i), dev->usb_base + SUNXI_INTRx);
-			process_ep_in_intr(dev);
+			//process_ep_in_intr(dev);
 		}
 	}
 
