@@ -597,6 +597,8 @@ static void reconfig_usbd(void)
 	// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_RX, BULK_OUT_EP_INDEX);
 	setbits_le16(the_controller->usb_base + SUNXI_INTRxE, 1 << BULK_OUT_EP_INDEX);
 
+	set_max_pktsize(the_controller, USB_SPEED_HIGH);
+
 	// USBC_SelectActiveEp(udc.bsp, old_ep_index);
 	writeb(old_ep_index, the_controller->usb_base + SUNXI_EPIND);
 
@@ -606,7 +608,6 @@ static void reconfig_usbd(void)
 
 static void set_max_pktsize(struct sunxi_udc *dev, enum usb_device_speed speed)
 {
-#if 0
 	unsigned int ep_ctrl;
 	int i;
 
@@ -623,9 +624,10 @@ static void set_max_pktsize(struct sunxi_udc *dev, enum usb_device_speed speed)
 	}
 
 	dev->ep[0].ep.maxpacket = ep0_fifo_size;
-	for (i = 1; i < S3C_MAX_ENDPOINTS; i++)
+	for (i = 1; i < SUNXI_MAX_ENDPOINTS; i++)
 		dev->ep[i].ep.maxpacket = ep_fifo_size;
 
+#if 0
 	/* EP0 - Control IN (64 bytes)*/
 	ep_ctrl = readl(&reg->in_endp[EP0_CON].diepctl);
 	writel(ep_ctrl|(0<<0), &reg->in_endp[EP0_CON].diepctl);

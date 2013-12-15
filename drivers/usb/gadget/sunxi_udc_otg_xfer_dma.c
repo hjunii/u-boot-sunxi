@@ -773,18 +773,19 @@ static int sunxi_udc_irq(int irq, void *_dev)
 static int sunxi_queue(struct usb_ep *_ep, struct usb_request *_req,
 			 gfp_t gfp_flags)
 {
-#if 0
 	struct sunxi_request *req;
 	struct sunxi_ep *ep;
 	struct sunxi_udc *dev;
 	unsigned long flags;
 	u32 ep_num, gintsts;
+	printf("%s\n", __func__);
 
 	req = container_of(_req, struct sunxi_request, req);
 	if (unlikely(!_req || !_req->complete || !_req->buf
 		     || !list_empty(&req->queue))) {
 
 		debug("%s: bad params\n", __func__);
+		printf("%s: bad params\n", __func__);
 		return -EINVAL;
 	}
 
@@ -794,13 +795,17 @@ static int sunxi_queue(struct usb_ep *_ep, struct usb_request *_req,
 
 		debug("%s: bad ep: %s, %d, %p\n", __func__,
 		      ep->ep.name, !ep->desc, _ep);
+		printf("%s: bad ep: %s, %d, %p\n", __func__,
+  		      ep->ep.name, !ep->desc, _ep);
 		return -EINVAL;
 	}
 
 	ep_num = ep_index(ep);
+	printf("%s: ep_num = %d\n", __func__, ep_num);
 	dev = ep->dev;
 	if (unlikely(!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN)) {
 
+		printf("%s: bogus device state %p\n", __func__, dev->driver);
 		debug("%s: bogus device state %p\n", __func__, dev->driver);
 		return -ESHUTDOWN;
 	}
@@ -812,6 +817,11 @@ static int sunxi_queue(struct usb_ep *_ep, struct usb_request *_req,
 
 	/* kickstart this i/o queue? */
 	debug("\n*** %s: %s-%s req = %p, len = %d, buf = %p"
+		"Q empty = %d, stopped = %d\n",
+		__func__, _ep->name, ep_is_in(ep) ? "in" : "out",
+		_req, _req->length, _req->buf,
+		list_empty(&ep->queue), ep->stopped);
+	printf("\n*** %s: %s-%s req = %p, len = %d, buf = %p"
 		"Q empty = %d, stopped = %d\n",
 		__func__, _ep->name, ep_is_in(ep) ? "in" : "out",
 		_req, _req->length, _req->buf,
@@ -842,14 +852,14 @@ static int sunxi_queue(struct usb_ep *_ep, struct usb_request *_req,
 			req = 0;
 
 		} else if (ep_is_in(ep)) {
-			gintsts = readl(&reg->gintsts);
+			//gintsts = readl(&reg->gintsts);
 			debug_cond(DEBUG_IN_EP,
 				   "%s: ep_is_in, S3C_UDC_OTG_GINTSTS=0x%x\n",
 				   __func__, gintsts);
 
 			setdma_tx(ep, req);
 		} else {
-			gintsts = readl(&reg->gintsts);
+			//gintsts = readl(&reg->gintsts);
 			debug_cond(DEBUG_OUT_EP != 0,
 				   "%s:ep_is_out, S3C_UDC_OTG_GINTSTS=0x%x\n",
 				   __func__, gintsts);
@@ -863,7 +873,6 @@ static int sunxi_queue(struct usb_ep *_ep, struct usb_request *_req,
 		list_add_tail(&req->queue, &ep->queue);
 
 	spin_unlock_irqrestore(&dev->lock, flags);
-#endif
 
 	return 0;
 }
@@ -875,15 +884,22 @@ static int sunxi_queue(struct usb_ep *_ep, struct usb_request *_req,
 /* return:  0 = still running, 1 = completed, negative = errno */
 static int write_fifo_ep0(struct sunxi_ep *ep, struct sunxi_request *req)
 {
-#if 0
 	u32 max;
 	unsigned count;
 	int is_last;
+
+	u32 fifo = 0;
+	u32 len = 0;
+	u32 i32 = 0;
+	u32 i8  = 0;
+	u8  *buf8  = NULL;
+	u32 *buf32 = NULL;
 
 	max = ep_maxpacket(ep);
 
 	debug_cond(DEBUG_EP0 != 0, "%s: max = %d\n", __func__, max);
 
+#if 0
 	count = setdma_tx(ep, req);
 
 	/* last packet is usually short (or a zlp) */
@@ -896,6 +912,33 @@ static int write_fifo_ep0(struct sunxi_ep *ep, struct sunxi_request *req)
 		else
 			is_last = 1;
 	}
+#endif
+
+	//fifo = USBC_SelectFIFO(udc.bsp, CTRL_EP_INDEX);
+	fifo = ep->dev->usb_base + SUNXI_EPFIFOx(CTRL_EP_INDEX);
+	//USBC_WritePacket(udc.bsp, fifo, bytes_total, (void *)fastboot_fifo_ep0);
+	buf32 = (u32*) req;
+	len   = req->req.length;
+
+	i32 = len >> 2;
+	i8  = len & 0x03;
+
+	while (i32--)
+		writel(*buf32++, fifo);
+	
+	buf8 = (__u8 *)buf32;
+	while (i8--)
+		writeb(*buf8++, fifo);
+
+	//WriteDataStatusComplete(udc.bsp, USBC_EP_TYPE_EP0, 1);
+	//while(USBC_Dev_IsWriteDataReady(hUSB, ep_type))
+	while (readw(ep->dev->usb_base + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_TX_PKT_READY))
+		udelay(1);
+	//USBC_Dev_Ctrl_ClearSetupEnd(hUSB);
+	setbits_le16(ep->dev->usb_base + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SERVICED_SETUP_END));;
+	/* clear irq */
+	//USBC_INT_ClearEpPending(hUSB, USBC_EP_TYPE_TX, 0);
+	writew(1, ep->dev->usb_base + SUNXI_INTTx);
 
 	debug_cond(DEBUG_EP0 != 0,
 		   "%s: wrote %s %d bytes%s %d left %p\n", __func__,
@@ -903,13 +946,16 @@ static int write_fifo_ep0(struct sunxi_ep *ep, struct sunxi_request *req)
 		   is_last ? "/L" : "",
 		   req->req.length - req->req.actual - count, req);
 
+#if 0
 	/* requests complete when all IN data is in the FIFO */
 	if (is_last) {
 		ep->dev->ep0state = WAIT_FOR_SETUP;
 		return 1;
 	}
-#endif
 	return 0;
+#else
+	return 1;
+#endif
 }
 
 int sunxi_fifo_read(struct sunxi_ep *ep, u32 *cp, int max)
@@ -1062,7 +1108,6 @@ static void sunxi_ep0_read(struct sunxi_udc *dev)
  */
 static int sunxi_ep0_write(struct sunxi_udc *dev)
 {
-#if 0
 	struct sunxi_request *req;
 	struct sunxi_ep *ep = &dev->ep[0];
 	int ret, need_zlp = 0;
@@ -1100,7 +1145,6 @@ static int sunxi_ep0_write(struct sunxi_udc *dev)
 		debug_cond(DEBUG_EP0 != 0,
 			   "%s: not finished\n", __func__);
 	}
-#endif
 
 	return 1;
 }
@@ -1723,7 +1767,6 @@ static void sunxi_handle_ep0(struct sunxi_udc *dev)
 
 static void sunxi_ep0_kick(struct sunxi_udc *dev, struct sunxi_ep *ep)
 {
-#if 0
 	debug_cond(DEBUG_EP0 != 0,
 		   "%s: ep_is_in = %d\n", __func__, ep_is_in(ep));
 	if (ep_is_in(ep)) {
@@ -1734,5 +1777,4 @@ static void sunxi_ep0_kick(struct sunxi_udc *dev, struct sunxi_ep *ep)
 		dev->ep0state = DATA_STATE_RECV;
 		sunxi_ep0_read(dev);
 	}
-#endif
 }

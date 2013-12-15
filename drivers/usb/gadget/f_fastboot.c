@@ -246,10 +246,13 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 	u32 bytes_total;
 	u32 this_inc;
 
+	printf("%s\n", __FUNCTION__);
+
 	val = w_value >> 8;
 
 	switch (val) {
 	case USB_DT_DEVICE:
+		printf("%s USB_DT_DEVICE\n", __FUNCTION__);
 
 		memcpy(ep0_buffer, &fb_descriptor, sizeof(fb_descriptor));
 		ep0_req->length = min(w_length, sizeof(fb_descriptor));
@@ -257,6 +260,7 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 		break;
 
 	case USB_DT_CONFIG:
+		printf("%s USB_DT_CONFIG\n", __FUNCTION__);
 
 		bytes_remaining = min(w_length, sizeof(ep0_buffer));
 		bytes_total = 0;
@@ -295,6 +299,7 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 		break;
 
 	case USB_DT_STRING:
+		printf("%s USB_DT_STRING\n", __FUNCTION__);
 
 		ret = usb_gadget_get_string(vendor_fb_strings,
 				w_value & 0xff, ep0_buffer);
@@ -309,6 +314,7 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 		break;
 
 	case USB_DT_DEVICE_QUALIFIER:
+		printf("%s USB_DEVICE_QALIFIER\n", __FUNCTION__);
 
 		memcpy(ep0_buffer, &qual_desc, sizeof(qual_desc));
 		ep0_req->length = min(w_length, sizeof(qual_desc));
