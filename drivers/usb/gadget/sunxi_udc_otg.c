@@ -101,6 +101,8 @@ static void nuke(struct sunxi_ep *ep, int status);
 static int sunxi_udc_set_halt(struct usb_ep *_ep, int value);
 static void sunxi_udc_set_nak(struct sunxi_ep *ep);
 
+static void sunxi_udc_reset(void);
+
 void set_udc_gadget_private_data(void *p)
 {
 #if 0
@@ -249,10 +251,11 @@ static int udc_enable(struct sunxi_udc *dev)
 
 	otg_phy_init(dev);
 	reconfig_usbd();
+	sunxi_udc_reset();
 
 #if 0
 	debug_cond(DEBUG_SETUP != 0,
-		   "S3C USB 2.0 OTG Controller Core Initialized : 0x%x\n",
+		   "SUNXI USB 2.0 OTG Controller Core Initialized : 0x%x\n",
 		    readl(&reg->gintmsk));
 #endif
 
@@ -439,9 +442,15 @@ static void stop_activity(struct sunxi_udc *dev,
 static void reconfig_usbd(void)
 {
 	/* 2. Soft-reset OTG Core and then unreset again. */
-	u32 reg;
-
 	debug("Reseting OTG controller\n");
+
+	the_controller->usb_address = 0;
+	the_controller->gadget.speed = USB_SPEED_UNKNOWN;
+}
+
+static void sunxi_udc_reset(void)
+{
+	u32 reg;
 
 	// USBC_ForceId(udc.bsp, USBC_ID_TYPE_DEVICE)
 	reg = readl(the_controller->usb_base + SUNXI_ISCR);
@@ -596,8 +605,6 @@ static void reconfig_usbd(void)
 	setbits_8(the_controller->usb_base + SUNXI_RXFIFOSZ, 1 << SUNXI_BP_RXFIFOSZ_DPB);
 	// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_RX, BULK_OUT_EP_INDEX);
 	setbits_le16(the_controller->usb_base + SUNXI_INTRxE, 1 << BULK_OUT_EP_INDEX);
-
-	set_max_pktsize(the_controller, USB_SPEED_HIGH);
 
 	// USBC_SelectActiveEp(udc.bsp, old_ep_index);
 	writeb(old_ep_index, the_controller->usb_base + SUNXI_EPIND);

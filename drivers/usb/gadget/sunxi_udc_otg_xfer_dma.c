@@ -4,6 +4,7 @@
 
 static u8 clear_feature_num;
 int clear_feature_flag;
+int deferred_rx = 0;
 
 /* Bulk-Only Mass Storage Reset (class-specific request) */
 #define GET_MAX_LUN_REQUEST	0xFE
@@ -567,10 +568,13 @@ static int sunxi_udc_irq(int irq, void *_dev)
 		//USBC_Dev_SetAddress_default(udc.bsp);
 		writeb(0x00, dev->usb_base + SUNXI_FADDR);
 
-		//reconfig_usbd();
+		reconfig_usbd();
 		dev->ep0state = WAIT_FOR_SETUP;
 		reset_available = 0;
 		sunxi_udc_pre_setup();
+
+		spin_unlock_irqrestore(&dev->lock, flags);
+		return IRQ_HANDLED;
 	}
 
 	if (usb_irq & SUNXI_INTUSB_RESUME)
@@ -595,6 +599,9 @@ static int sunxi_udc_irq(int irq, void *_dev)
 			spin_unlock_irqrestore(&dev->lock, flags);
 			return IRQ_HANDLED;
 		}
+
+		spin_unlock_irqrestore(&dev->lock, flags);
+		return IRQ_HANDLED;
 	}
 
 	if (usb_irq & SUNXI_INTUSB_SUSPEND)
@@ -610,6 +617,9 @@ static int sunxi_udc_irq(int irq, void *_dev)
 			if (dev->driver->suspend)
 				dev->driver->suspend(&dev->gadget);
 		}
+
+		spin_unlock_irqrestore(&dev->lock, flags);
+		return IRQ_HANDLED;
 	}
 
 	if (usb_irq & SUNXI_INTUSB_DISCONNECT)
@@ -627,11 +637,14 @@ static int sunxi_udc_irq(int irq, void *_dev)
 				spin_lock_irqsave(&dev->lock, flags);
 			}
 		}
+
+		spin_unlock_irqrestore(&dev->lock, flags);
+		return IRQ_HANDLED;
 	}
 
 	if (usb_irq & SUNXI_INTUSB_SOF)
 	{
-		debug_cond(DEBUG_ISR, "\tSOF interrupt\n");
+		debug_cond(DEBUG_ISR, "\tSOF interrupt deferred_rx: %d\n", deferred_rx);
 
 		//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_SOF);
 		writeb(SUNXI_INTUSB_SOF, dev->usb_base + SUNXI_INTUSB);
@@ -643,6 +656,8 @@ static int sunxi_udc_irq(int irq, void *_dev)
 			spin_unlock_irqrestore(&dev->lock, flags);
 			return IRQ_HANDLED;
 		}
+
+		deferred_rx = 0;
 	}
 
 	if (tx_irq & SUNXI_INTTx_FLAG_EP0) {
@@ -667,6 +682,8 @@ static int sunxi_udc_irq(int irq, void *_dev)
 			//USBC_INT_ClearEpPending(udc.bsp, USBC_EP_TYPE_RX, i);
 			writew((1 << i), dev->usb_base + SUNXI_INTRx);
 			//process_ep_in_intr(dev);
+
+			deferred_rx = 1;
 		}
 	}
 
@@ -803,12 +820,14 @@ static int sunxi_queue(struct usb_ep *_ep, struct usb_request *_req,
 	ep_num = ep_index(ep);
 	printf("%s: ep_num = %d\n", __func__, ep_num);
 	dev = ep->dev;
+#if 0
 	if (unlikely(!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN)) {
 
 		printf("%s: bogus device state %p\n", __func__, dev->driver);
 		debug("%s: bogus device state %p\n", __func__, dev->driver);
 		return -ESHUTDOWN;
 	}
+#endif
 
 	spin_lock_irqsave(&dev->lock, flags);
 
@@ -919,6 +938,8 @@ static int write_fifo_ep0(struct sunxi_ep *ep, struct sunxi_request *req)
 	//USBC_WritePacket(udc.bsp, fifo, bytes_total, (void *)fastboot_fifo_ep0);
 	buf32 = (u32*) req;
 	len   = req->req.length;
+	count = len;
+	is_last = 1;
 
 	i32 = len >> 2;
 	i8  = len & 0x03;
@@ -954,6 +975,7 @@ static int write_fifo_ep0(struct sunxi_ep *ep, struct sunxi_request *req)
 	}
 	return 0;
 #else
+	ep->dev->ep0state = WAIT_FOR_SETUP;
 	return 1;
 #endif
 }
