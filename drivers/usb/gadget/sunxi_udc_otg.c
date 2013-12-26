@@ -1,7 +1,8 @@
 /*
  * drivers/usb/gadget/sunxi_udc_otg.c
  */
-#undef DEBUG
+//#undef DEBUG
+#define DEBUG
 #include <common.h>
 #include <asm/errno.h>
 #include <linux/list.h>
@@ -53,12 +54,12 @@ static char *state_names[] = {
 	"WAIT_FOR_NULL_COMPLETE",
 };
 
-#define DRIVER_DESC "S3C HS USB OTG Device Driver, (c) Samsung Electronics"
-#define DRIVER_VERSION "15 March 2009"
+#define DRIVER_DESC "SUNXI HS USB OTG Device Driver"
+#define DRIVER_VERSION "23 Dec 2013"
 
 struct sunxi_udc	*the_controller;
 
-static const char driver_name[] = "s3c-udc";
+static const char driver_name[] = "sunxi-udc";
 static const char driver_desc[] = DRIVER_DESC;
 static const char ep0name[] = "ep0-control";
 
@@ -118,7 +119,7 @@ void *get_udc_gadget_private_data(struct usb_gadget *gadget)
 #if 0
 	return gadget->dev.device_data;
 #else
-	return 0;
+	return NULL;
 #endif
 }
 
@@ -154,10 +155,14 @@ void otg_phy_init(struct sunxi_udc *dev)
 
 	/* Enable PHY */
 	struct sunxi_ccm_reg *ccm = (struct sunxi_ccm_reg *) dev->ccmu_base;
+
+	// close_usb_clock(udc.ccmu_base);
 	clrbits_le32(&ccm->ahb_gate0, 0x1 << AHB_GATE_OFFSET_USB);
 	sdelay(10000);
 	clrbits_le32(&ccm->usb_clk_cfg, 0x1 << 8 | 0x1);
 	sdelay(10000);
+
+	// open_usb_clock(udc.ccmu_base);
 	setbits_le32(&ccm->ahb_gate0, 0x1 << AHB_GATE_OFFSET_USB);
 	sdelay(10000);
 	setbits_le32(&ccm->usb_clk_cfg, 0x1 << 8 | 0x1);
@@ -196,7 +201,6 @@ void otg_phy_off(struct sunxi_udc *dev)
  */
 static void udc_disable(struct sunxi_udc *dev)
 {
-#if 0
 	debug_cond(DEBUG_SETUP != 0, "%s: %p\n", __func__, dev);
 
 	udc_set_address(dev, 0);
@@ -206,7 +210,6 @@ static void udc_disable(struct sunxi_udc *dev)
 	dev->usb_address = 0;
 
 	otg_phy_off(dev);
-#endif
 }
 
 /*
@@ -253,11 +256,8 @@ static int udc_enable(struct sunxi_udc *dev)
 	reconfig_usbd();
 	sunxi_udc_reset();
 
-#if 0
 	debug_cond(DEBUG_SETUP != 0,
-		   "SUNXI USB 2.0 OTG Controller Core Initialized : 0x%x\n",
-		    readl(&reg->gintmsk));
-#endif
+		   "SUNXI USB 2.0 OTG Controller Core Initialized\n");
 
 	dev->gadget.speed = USB_SPEED_UNKNOWN;
 
@@ -343,7 +343,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
  */
 static void done(struct sunxi_ep *ep, struct sunxi_request *req, int status)
 {
-#if 0
 	unsigned int stopped = ep->stopped;
 
 	debug("%s: %s %p, req = %p, stopped = %d\n",
@@ -388,7 +387,6 @@ static void done(struct sunxi_ep *ep, struct sunxi_request *req, int status)
 	debug("callback completed\n");
 
 	ep->stopped = stopped;
-#endif
 }
 
 /*
@@ -396,7 +394,6 @@ static void done(struct sunxi_ep *ep, struct sunxi_request *req, int status)
  */
 static void nuke(struct sunxi_ep *ep, int status)
 {
-#if 0
 	struct sunxi_request *req;
 
 	debug("%s: %s %p\n", __func__, ep->ep.name, ep);
@@ -406,13 +403,11 @@ static void nuke(struct sunxi_ep *ep, int status)
 		req = list_entry(ep->queue.next, struct sunxi_request, queue);
 		done(ep, req, status);
 	}
-#endif
 }
 
 static void stop_activity(struct sunxi_udc *dev,
 			  struct usb_gadget_driver *driver)
 {
-#if 0
 	int i;
 
 	/* don't disconnect drivers more than once */
@@ -421,7 +416,7 @@ static void stop_activity(struct sunxi_udc *dev,
 	dev->gadget.speed = USB_SPEED_UNKNOWN;
 
 	/* prevent new request submissions, kill any outstanding requests  */
-	for (i = 0; i < S3C_MAX_ENDPOINTS; i++) {
+	for (i = 0; i < SUNXI_MAX_ENDPOINTS; i++) {
 		struct sunxi_ep *ep = &dev->ep[i];
 		ep->stopped = 1;
 		nuke(ep, -ESHUTDOWN);
@@ -436,7 +431,6 @@ static void stop_activity(struct sunxi_udc *dev,
 
 	/* re-init driver-visible data structures */
 	udc_reinit(dev);
-#endif
 }
 
 static void reconfig_usbd(void)
@@ -453,9 +447,11 @@ static void sunxi_udc_reset(void)
 	u32 reg;
 
 	// USBC_ForceId(udc.bsp, USBC_ID_TYPE_DEVICE)
+	// __USBC_ForceIdToHigh(usbc_otg->base_addr)
 	reg = readl(the_controller->usb_base + SUNXI_ISCR);
         reg |=  (0x03 << SUNXI_BP_ISCR_FORCE_ID);
 	
+	// reg_val = __USBC_WakeUp_ClearChangeDetect(reg_val)
 	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
@@ -463,9 +459,11 @@ static void sunxi_udc_reset(void)
 	writel(reg, the_controller->usb_base + SUNXI_ISCR);
 	
 	// USBC_ForceVbusValid(udc.bsp, USBC_VBUS_TYPE_HIGH)
+	// __USBC_ForceVbusValidToHigh(usbc_otg->base_addr)
 	reg = readl(the_controller->usb_base + SUNXI_ISCR);
 	reg |= (0x03 << SUNXI_BP_ISCR_FORCE_VBUS_VALID);
 
+	// reg_val = __USBC_WakeUp_ClearChangeDetect(reg_val)
 	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
@@ -479,6 +477,7 @@ static void sunxi_udc_reset(void)
 	reg = readl(the_controller->usb_base + SUNXI_ISCR);
 	reg |= (1 << SUNXI_BP_ISCR_DPDM_PULLUP_EN);
 
+	// reg_val = __USBC_WakeUp_ClearChangeDetect(reg_val)
 	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
@@ -489,6 +488,7 @@ static void sunxi_udc_reset(void)
 	reg = readl(the_controller->usb_base + SUNXI_ISCR);
 	reg |= (1 << SUNXI_BP_ISCR_ID_PULLUP_EN);
 
+	// reg_val = __USBC_WakeUp_ClearChangeDetect(reg_val)
 	reg &= ~(1 << SUNXI_BP_ISCR_VBUS_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_ID_CHANGE_DETECT);
 	reg &= ~(1 << SUNXI_BP_ISCR_DPDM_CHANGE_DETECT);
@@ -509,15 +509,19 @@ static void sunxi_udc_reset(void)
 	// NONE
 	
 	// USBC_Dev_ConfigTransferMode(udc.bsp, USBC_TS_TYPE_BULK, USBC_TS_MODE_HS);
+	// __USBC_Dev_TsType_Bulk(usbc_otg->base_addr)
 	clrbits_8(the_controller->usb_base + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_ISO_UPDATE_EN);
-	clrbits_8(the_controller->usb_base + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_HIGH_SPEED_EN);
+	// __USBC_Dev_TsMode_Hs(usbc_otg->base_addr)
+	setbits_8(the_controller->usb_base + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_HIGH_SPEED_EN);
 
 	/* disable all interrupt */
 	// USBC_INT_DisableUsbMiscAll(udc.bsp);
 	writeb(0, the_controller->usb_base + SUNXI_INTUSBE);
 	// USBC_INT_DisableEpAll(udc.bsp, USBC_EP_TYPE_RX);
+	// __USBC_INT_DisableTxAll(usbc_otg->base_addr);
 	writew(0, the_controller->usb_base + SUNXI_INTRxE);
 	// USBC_INT_DisableEpAll(udc.bsp, USBC_EP_TYPE_TX);
+	// __USBC_INT_DisableTxAll(usbc_otg->base_addr);
 	writew(0, the_controller->usb_base + SUNXI_INTTxE);
 
 	// USBC_INT_EnableUsbMiscUint(udc.bsp, USBC_BP_INTUSB_SOF);
@@ -541,8 +545,10 @@ static void sunxi_udc_reset(void)
 	reg |= SUNXI_BP_INTUSB_DISCONNECT;
 	writeb(reg, the_controller->usb_base + SUNXI_INTUSBE);
 	// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_TX, 0);
+	// __USBC_INT_EnableTxEp(usbc_otg->base_addr, ep_index);
 	setbits_le16(the_controller->usb_base + SUNXI_INTTxE, 1 << 0);
 
+	// fastboot_bulk_endpoint_reset();
 	u8 old_ep_index = 0;
 
 	//old_ep_index = USBC_GetActiveEp(udc.bsp);
@@ -552,16 +558,22 @@ static void sunxi_udc_reset(void)
 	// USBC_SelectActiveEp(udc.bsp, BULK_IN_EP_INDEX);
 	writeb(BULK_IN_EP_INDEX, the_controller->usb_base + SUNXI_EPIND);
 	// USBC_Dev_ConfigEp(udc.bsp, USBC_TS_TYPE_BULK, USBC_EP_TYPE_TX, 1, udc.bulk_ep_size & 0x7ff);
+	// __USBC_Dev_Tx_ConfigEp(usbc_otg->base_addr, ts_type, is_double_fifo,  ep_MaxPkt)
+	// --<1>--config tx csr
 	reg = (1 << SUNXI_BP_TXCSR_D_MODE);
 	reg |= (1 << SUNXI_BP_TXCSR_D_CLEAR_DATA_TOGGLE);
 	reg |= (1 << SUNXI_BP_TXCSR_D_FLUSH_FIFO);
 	writew(reg, the_controller->usb_base + SUNXI_TXCSR);
 	writew(reg, the_controller->usb_base + SUNXI_TXCSR);
+	// --<2>--config tx ep max packet
 	reg = readw(the_controller->usb_base + SUNXI_TXMAXP);
 	reg |= (512 & 0x7ff) & ((1 << SUNXI_BP_TXMAXP_PACKET_COUNT) - 1);
 	writew(reg, the_controller->usb_base + SUNXI_TXMAXP);
+	// --<3>--config ep transfer type
+	// __USBC_Dev_Tx_EnableBulkEp(usbc_base_addr);
 	clrbits_le16(the_controller->usb_base + SUNXI_TXCSR, 1 << SUNXI_BP_TXCSR_D_ISO);
 	// USBC_ConfigFifo(udc.bsp, USBC_EP_TYPE_TX, 1, udc.fifo_size, 1024);
+	// __USBC_ConfigFifo_TxEp(usbc_otg->base_addr, is_double_fifo, fifo_size, fifo_addr);
 	u32 temp = 0;
 	u32 size = 0;
 	temp = 512 + 511;
@@ -576,20 +588,26 @@ static void sunxi_udc_reset(void)
 	writeb(size & 0x0f, the_controller->usb_base + SUNXI_TXFIFOSZ);
 	setbits_8(the_controller->usb_base + SUNXI_TXFIFOSZ, 1 << SUNXI_BP_TXFIFOSZ_DPB);
 	// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_TX, BULK_IN_EP_INDEX);
+	// __USBC_INT_EnableTxEp(usbc_otg->base_addr, ep_index);
 	setbits_le16(the_controller->usb_base + SUNXI_INTTxE, 1 << BULK_IN_EP_INDEX);
 
 	/* rx */
 	// USBC_SelectActiveEp(udc.bsp, BULK_OUT_EP_INDEX);
 	writeb(BULK_OUT_EP_INDEX, the_controller->usb_base + SUNXI_EPIND);
 	// USBC_Dev_ConfigEp(udc.bsp, USBC_TS_TYPE_BULK, USBC_EP_TYPE_RX, 1, udc.bulk_ep_size & 0x7ff);
+	// __USBC_Dev_Rx_ConfigEp(usbc_otg->base_addr, ts_type, is_double_fifo, ep_MaxPkt);
+	// --<1>--config tx csr
 	reg = (1 << SUNXI_BP_RXCSR_D_CLEAR_DATA_TOGGLE) | (1 << SUNXI_BP_RXCSR_D_FLUSH_FIFO);
 	writew(reg, the_controller->usb_base + SUNXI_RXCSR);
 	writew(reg, the_controller->usb_base + SUNXI_RXCSR);
+	// --<2>--config tx ep max packet
 	reg = readw(the_controller->usb_base + SUNXI_RXMAXP);
 	reg |= (512 & 0x7ff) & ((1 << SUNXI_BP_RXMAXP_PACKET_COUNT) - 1);
 	writew(reg, the_controller->usb_base + SUNXI_RXMAXP);
+	// __USBC_Dev_Rx_EnableBulkEp(usbc_base_addr);
 	clrbits_le16(the_controller->usb_base + SUNXI_RXCSR, 1 << SUNXI_BP_RXCSR_D_ISO);
 	// USBC_ConfigFifo(udc.bsp, USBC_EP_TYPE_RX, 1, udc.fifo_size, 2048);
+	//  __USBC_ConfigFifo_RxEp(usbc_otg->base_addr, is_double_fifo, fifo_size, fifo_addr);
 	temp = 0;
 	size = 0;
 	temp = 512 + 511;
@@ -604,6 +622,7 @@ static void sunxi_udc_reset(void)
 	writeb(size & 0x0f, the_controller->usb_base + SUNXI_RXFIFOSZ);
 	setbits_8(the_controller->usb_base + SUNXI_RXFIFOSZ, 1 << SUNXI_BP_RXFIFOSZ_DPB);
 	// USBC_INT_EnableEp(udc.bsp, USBC_EP_TYPE_RX, BULK_OUT_EP_INDEX);
+	// __USBC_INT_EnableRxEp(usbc_otg->base_addr, ep_index);
 	setbits_le16(the_controller->usb_base + SUNXI_INTRxE, 1 << BULK_OUT_EP_INDEX);
 
 	// USBC_SelectActiveEp(udc.bsp, old_ep_index);
@@ -806,7 +825,6 @@ static int sunxi_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 static int sunxi_fifo_status(struct usb_ep *_ep)
 {
 	int count = 0;
-#if 0
 	struct sunxi_ep *ep;
 
 	ep = container_of(_ep, struct sunxi_ep, ep);
@@ -820,7 +838,6 @@ static int sunxi_fifo_status(struct usb_ep *_ep)
 	/* LPD can't report unclaimed bytes from IN fifos */
 	if (ep_is_in(ep))
 		return -EOPNOTSUPP;
-#endif
 	return count;
 }
 
@@ -829,7 +846,6 @@ static int sunxi_fifo_status(struct usb_ep *_ep)
  */
 static void sunxi_fifo_flush(struct usb_ep *_ep)
 {
-#if 0
 	struct sunxi_ep *ep;
 
 	ep = container_of(_ep, struct sunxi_ep, ep);
@@ -839,7 +855,6 @@ static void sunxi_fifo_flush(struct usb_ep *_ep)
 	}
 
 	debug("%s: %d\n", __func__, ep_index(ep));
-#endif
 }
 
 static const struct usb_gadget_ops sunxi_udc_ops = {
@@ -876,13 +891,13 @@ static struct sunxi_udc memory = {
 	/* first group of endpoints */
 	.ep[1] = {
 		.ep = {
-			.name = "ep1in-bulk",
+			.name = "ep1-bulk",
 			.ops = &sunxi_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
 		.dev = &memory,
 
-		.bEndpointAddress = USB_DIR_IN | 1,
+		.bEndpointAddress = 1,
 		.bmAttributes = USB_ENDPOINT_XFER_BULK,
 
 		.ep_type = ep_bulk_out,
@@ -891,13 +906,13 @@ static struct sunxi_udc memory = {
 
 	.ep[2] = {
 		.ep = {
-			.name = "ep2out-bulk",
+			.name = "ep2-bulk",
 			.ops = &sunxi_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
 		.dev = &memory,
 
-		.bEndpointAddress = USB_DIR_OUT | 2,
+		.bEndpointAddress = 2,
 		.bmAttributes = USB_ENDPOINT_XFER_BULK,
 
 		.ep_type = ep_bulk_in,
@@ -906,17 +921,47 @@ static struct sunxi_udc memory = {
 
 	.ep[3] = {
 		.ep = {
-			.name = "ep3in-int",
+			.name = "ep3-bulk",
 			.ops = &sunxi_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
 		.dev = &memory,
 
-		.bEndpointAddress = USB_DIR_IN | 3,
+		.bEndpointAddress = 3,
+		.bmAttributes = USB_ENDPOINT_XFER_BULK,
+
+		.ep_type = ep_bulk_in,
+		.fifo_num = 3,
+	},
+
+	.ep[4] = {
+		.ep = {
+			.name = "ep4-bulk",
+			.ops = &sunxi_ep_ops,
+			.maxpacket = EP_FIFO_SIZE,
+		},
+		.dev = &memory,
+
+		.bEndpointAddress = 4,
+		.bmAttributes = USB_ENDPOINT_XFER_BULK,
+
+		.ep_type = ep_bulk_in,
+		.fifo_num = 4,
+	},
+
+	.ep[5] = {
+		.ep = {
+			.name = "ep5-int",
+			.ops = &sunxi_ep_ops,
+			.maxpacket = EP_FIFO_SIZE,
+		},
+		.dev = &memory,
+
+		.bEndpointAddress = 5,
 		.bmAttributes = USB_ENDPOINT_XFER_INT,
 
 		.ep_type = ep_interrupt,
-		.fifo_num = 3,
+		.fifo_num = 5,
 	},
 };
 
