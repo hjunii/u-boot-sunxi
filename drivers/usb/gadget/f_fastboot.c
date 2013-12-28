@@ -38,6 +38,8 @@
 static struct usb_string def_usb_fb_strings[] = {
 #ifdef CONFIG_DRA7XX
 	{ FB_STR_PRODUCT_IDX,		"dra7xx_evm" },
+#elif defined(CONFIG_SUNXI)
+	{ FB_STR_PRODUCT_IDX,		"sunxi" },
 #else
 	{ FB_STR_PRODUCT_IDX,		"omap5uevm" },
 #endif
@@ -133,38 +135,25 @@ static void fastboot_ep0_complete(struct usb_ep *ep, struct usb_request *req)
 
 static int fastboot_bind(struct usb_gadget *gadget)
 {
-	printf ("fastboot_bind\n");
 
 	g = gadget;
 	ep0_req = usb_ep_alloc_request(g->ep0, 0);
 	if (!ep0_req)
-	{
-		printf("!ep_req\n");
 		goto err;
-	}
 	ep0_req->buf = ep0_buffer;
 	ep0_req->complete = fastboot_ep0_complete;
 
 	ep_in = usb_ep_autoconfig(gadget, &fs_ep_in);
 	if (!ep_in)
-	{
-		printf("!fs_ep_in\n");
 		goto err;
-	}
 	ep_in->driver_data = ep_in;
 
 	ep_out = usb_ep_autoconfig(gadget, &fs_ep_out);
 	if (!ep_out)
-	{
-		printf("!ep_out\n");
 		goto err;
-	}
 	ep_out->driver_data = ep_out;
 
 	hs_ep_out.bEndpointAddress = fs_ep_out.bEndpointAddress;
-
-	printf ("fastboot_bind end\n");
-
 	return 0;
 err:
 	return -1;
@@ -172,8 +161,6 @@ err:
 
 static void fastboot_unbind(struct usb_gadget *gadget)
 {
-	printf("fastboot_unbind\n");
-
 	usb_ep_free_request(g->ep0, ep0_req);
 	ep_in->driver_data = NULL;
 	ep_out->driver_data = NULL;
@@ -246,13 +233,10 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 	u32 bytes_total;
 	u32 this_inc;
 
-	printf("%s\n", __FUNCTION__);
-
 	val = w_value >> 8;
 
 	switch (val) {
 	case USB_DT_DEVICE:
-		printf("%s USB_DT_DEVICE\n", __FUNCTION__);
 
 		memcpy(ep0_buffer, &fb_descriptor, sizeof(fb_descriptor));
 		ep0_req->length = min(w_length, sizeof(fb_descriptor));
@@ -260,7 +244,6 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 		break;
 
 	case USB_DT_CONFIG:
-		printf("%s USB_DT_CONFIG\n", __FUNCTION__);
 
 		bytes_remaining = min(w_length, sizeof(ep0_buffer));
 		bytes_total = 0;
@@ -299,7 +282,6 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 		break;
 
 	case USB_DT_STRING:
-		printf("%s USB_DT_STRING\n", __FUNCTION__);
 
 		ret = usb_gadget_get_string(vendor_fb_strings,
 				w_value & 0xff, ep0_buffer);
@@ -314,7 +296,6 @@ static int fastboot_setup_get_descr(struct usb_gadget *gadget,
 		break;
 
 	case USB_DT_DEVICE_QUALIFIER:
-		printf("%s USB_DEVICE_QALIFIER\n", __FUNCTION__);
 
 		memcpy(ep0_buffer, &qual_desc, sizeof(qual_desc));
 		ep0_req->length = min(w_length, sizeof(qual_desc));
@@ -482,8 +463,6 @@ static int fastboot_setup_out_req(struct usb_gadget *gadget,
 static int fastboot_setup(struct usb_gadget *gadget,
 		const struct usb_ctrlrequest *req)
 {
-	printf ("fastboot_setup\n");
-
 	if ((req->bRequestType & USB_TYPE_MASK) != USB_TYPE_STANDARD)
 		return -1;
 
@@ -510,10 +489,8 @@ static int fastboot_setup(struct usb_gadget *gadget,
 
 static void fastboot_disconnect(struct usb_gadget *gadget)
 {
-	printf ("fasboot_disconnect\n");
-
 	fastboot_disable_ep(gadget);
-	gadget_is_connected = 0;
+//	gadget_is_connected = 0;
 }
 
 struct usb_gadget_driver fast_gadget = {
