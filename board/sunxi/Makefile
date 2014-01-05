@@ -81,7 +81,10 @@ COBJS-$(CONFIG_SANEI_N90)	+= dram_sanei_n90.o
 COBJS-$(CONFIG_UHOST_U1A)	+= dram_sun4i_360_1024_iow8.o
 COBJS-$(CONFIG_WOBO_I5)		+= dram_wobo_i5.o
 COBJS-$(CONFIG_XZPAD700)	+= dram_xzpad700.o
+COBJS-$(CONFIG_CMD_FASTBOOT)	+= mmc.o
 COBJS-$(CONFIG_CMD_FASTBOOT)	+= fastboot.o
+COBJS-$(CONFIG_CMD_FASTBOOT)	+= sparse.o
+COBJS-$(CONFIG_CMD_FASTBOOT)	+= device_tree.o
 
 COBJS	:= $(COBJS-y)
 SRCS	:= $(COBJS:.o=.c)

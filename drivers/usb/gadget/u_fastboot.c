@@ -474,8 +474,8 @@ static struct cmd_dispatch_info cmd_dispatch_info[] = {
 		.cb = cb_flash,
 	},
 	{
-	    .cmd = "oem",
-	    .cb = cb_oem,
+	        .cmd = "oem",
+	        .cb = cb_oem,
 	},
 	{
 		.cmd = "erase",
@@ -501,7 +501,7 @@ static u32 fastboot_get_boot_ptn(boot_img_hdr *hdr, char *response,
 	/* Read the boot image header */
 	sector_size = mmc->block_dev.blksz;
 	hdr_sectors = (sizeof(struct boot_img_hdr)/sector_size) + 1;
-	status = mmc->block_dev.block_read(1, pte->start,
+	status = mmc->block_dev.block_read(0, pte->start,
 			hdr_sectors, (void *)hdr);
 
 	if (status < 0) {
@@ -542,7 +542,7 @@ static int fastboot_update_zimage(void)
 	strcpy(response, "OKAY");
 	printf("Flashing zImage...%d bytes\n", download_bytes);
 
-	mmc = find_mmc_device(1);
+	mmc = find_mmc_device(0);
 	if (mmc == NULL) {
 		strcpy(response, "FAILCannot find mmc at slot 1");
 		goto out;
@@ -579,7 +579,7 @@ static int fastboot_update_zimage(void)
 
 	ramdisk_buffer = (u8 *)hdr;
 	ramdisk_buffer += (hdr_sectors * mmc->block_dev.blksz);
-	ret = mmc->block_dev.block_read(1, ramdisk_sector_start,
+	ret = mmc->block_dev.block_read(0, ramdisk_sector_start,
 		ramdisk_sectors, ramdisk_buffer);
 	if (ret < 0) {
 		sprintf(response, "FAILCannot read ramdisk from boot "
@@ -590,7 +590,7 @@ static int fastboot_update_zimage(void)
 
 	/* Change the boot img hdr */
 	hdr->kernel_size = download_bytes;
-	ret = mmc->block_dev.block_write(1, pte->start,
+	ret = mmc->block_dev.block_write(0, pte->start,
 		hdr_sectors, (void *)hdr);
 	if (ret < 0) {
 		sprintf(response, "FAILCannot writeback boot img hdr");
@@ -602,7 +602,7 @@ static int fastboot_update_zimage(void)
 	kernel_sector_start = pte->start + sectors_per_page;
 	kernel_sectors = CEIL(hdr->kernel_size, hdr->page_size)*
 					sectors_per_page;
-	ret = mmc->block_dev.block_write(1, kernel_sector_start, kernel_sectors,
+	ret = mmc->block_dev.block_write(0, kernel_sector_start, kernel_sectors,
 			fb_cfg.transfer_buffer);
 	if (ret < 0) {
 		sprintf(response, "FAILCannot write new kernel");
@@ -614,7 +614,7 @@ static int fastboot_update_zimage(void)
 	ramdisk_sector_start = pte->start + sectors_per_page;
 	ramdisk_sector_start += CEIL(hdr->kernel_size, hdr->page_size)*
 						sectors_per_page;
-	ret = mmc->block_dev.block_write(1, ramdisk_sector_start, ramdisk_sectors,
+	ret = mmc->block_dev.block_write(0, ramdisk_sector_start, ramdisk_sectors,
 						ramdisk_buffer);
 	if (ret < 0) {
 		sprintf(response, "FAILCannot write back original ramdisk");
@@ -634,7 +634,7 @@ static int fastboot_flash(const char *partition)
 	int status = 0;
 	struct fastboot_ptentry *ptn;	
 	char source[32], dest[32], length[32];	
-	char *dev[3] = { "mmc", "dev", "1" };
+	char *dev[3] = { "mmc", "dev", "0" };
 	char *mmc_write[5]  = {"mmc", "write", NULL, NULL, NULL};
 	char *mmc_init[2] = {"mmc", "rescan",};
 	
@@ -764,7 +764,7 @@ static int fastboot_erase(const char *partition)
 	int status = 0;
 	unsigned int sectors;
 	char start[32], length[32];
-	char *dev[3] = { "mmc", "dev", "1" };
+	char *dev[3] = { "mmc", "dev", "0" };
 	char *erase[4]	= { "mmc", "erase", NULL, NULL, };
 	char *mmc_init[2] = {"mmc", "rescan",};
 

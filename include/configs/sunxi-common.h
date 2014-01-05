@@ -168,6 +168,7 @@
 #define RUN_BOOT_RAM	""
 #endif
 
+#ifndef CONFIG_CMD_FASTBOOT
 #define CONFIG_BOOTCOMMAND \
 	RUN_BOOT_RAM \
 	"if run loadbootenv; then " \
@@ -184,6 +185,11 @@
 	"fi;" \
 	"run autoboot;" \
 	""
+#else
+#define CONFIG_BOOTCOMMAND \
+	RUN_BOOT_RAM \
+	""
+#endif
 
 #ifdef CONFIG_CMD_WATCHDOG
 #define	RESET_WATCHDOG "watchdog 0"
@@ -462,13 +468,5 @@
     !defined CONFIG_ENV_IS_IN_SPI_FLASH
 #define CONFIG_ENV_IS_NOWHERE
 #endif
-
-#define CONFIG_USB_GADGET
-#define CONFIG_USB_GADGET_SUNXI_UDC_OTG
-/*#define CONFIG_USB_SUNXI*/
-#define CONFIG_CMD_FASTBOOT
-#define CONFIG_SYS_CACHELINE_SIZE		64
-#define MEMORY_BASE                             0x80000000
-#define CONFIG_ADDR_DOWNLOAD			(MEMORY_BASE + 0x02000000)
 
 #endif /* _SUNXI_COMMON_CONFIG_H */

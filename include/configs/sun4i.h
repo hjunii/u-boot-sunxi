@@ -33,6 +33,18 @@
 #define CONFIG_SYS_PROMPT		"sun4i# "
 #define CONFIG_MACH_TYPE		4104
 
+#define CONFIG_USB_GADGET
+#define CONFIG_USB_GADGET_SUNXI_UDC_OTG
+/*#define CONFIG_USB_SUNXI*/
+#define CONFIG_CMD_FASTBOOT
+#define CONFIG_SYS_CACHELINE_SIZE		64
+#define MEMORY_BASE                             0x80000000
+#define CONFIG_ADDR_DOWNLOAD			(MEMORY_BASE + 0x02000000)
+#define KERNEL_ENTRY                            0x40000000
+#define DEVICE_TREE                             0x43000000
+
+#define CONFIG_BOARD_LATE_INIT
+
 /*
  * Include common sunxi configuration where most the settings are
  */

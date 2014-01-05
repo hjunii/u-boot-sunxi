@@ -1921,16 +1921,10 @@ int do_booti(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	char *ptn = "boot";
 	int mmcc = -1;
 	boot_img_hdr *hdr;	
-	//unsigned dbt_addr = CONFIG_ADDR_ATAGS;
-	//unsigned cfg_machine_type = CONFIG_BOARD_MACH_TYPE;	
+	unsigned dbt_addr = DEVICE_TREE;
 	struct mmc* mmc = NULL;
 	u64 num_sectors;
 	int status;
-	char* fdt_addr[3] = { "fdt", "addr", STR(DEVICE_TREE) };
-	char* fdt_resize[2] = { "fdt", "resize"};
-	char* fdt_chosen[4] = { "fdt", "chosen", NULL, NULL}; 
-	char start[32];
-	char end[32];
 	
 	void (*theKernel)(int zero, int arch, void *);
 
@@ -1973,7 +1967,7 @@ int do_booti(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 			goto fail;
 		}
 
-		//dbt_addr = load_dev_tree(dbt_addr);
+		dbt_addr = load_dev_tree(dbt_addr);
 
 		num_sectors =  1;
 		mmc->block_dev.block_read(mmcc,pte->start,num_sectors,(void*)hdr);
@@ -1985,14 +1979,12 @@ int do_booti(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 		bootimg_print_image_hdr(hdr);
 		
-		//hdr->kernel_addr = KERNEL_ENTRY;
-		
 		/* read kernel */
 		printf("\nHeader: Kernel Addr:0x%x", hdr->kernel_addr);
 		printf("\nHeader: Kernel Size:0x%x", hdr->kernel_size);
 		printf("\nHeader: Ramdisk Addr:0x%x", hdr->ramdisk_addr);
 		printf("\nHeader: Ramdisk Size:0x%x", hdr->ramdisk_size);
-		printf("\n\nramdisk sector count:%d", (int)(hdr->ramdisk_size/mmc->block_dev.blksz));
+		printf("\n\nramdisk sector count:%d\n\n", (int)(hdr->ramdisk_size/mmc->block_dev.blksz));
 
 		sector = pte->start + (hdr->page_size / mmc->block_dev.blksz);
 		num_sectors = ((hdr->kernel_size/mmc->block_dev.blksz) + 1);
@@ -2017,36 +2009,15 @@ int do_booti(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	printf("kernel   @ %08x (%d)\n", hdr->kernel_addr, hdr->kernel_size);
 	printf("ramdisk  @ %08x (%d)\n", hdr->ramdisk_addr, hdr->ramdisk_size);
 
-	
-	//Set the initrd_start and initrd_end inside the FDT
-	status = do_fdt(NULL, 0, 3, fdt_addr);
-	if(status) {
-		printf("booti: Could not set FDT address\n");
-		goto fail;
-	}
-	status = do_fdt(NULL, 0, 4, fdt_resize);	
-	if(status) {
-		printf("booti: Could not resize FDT\n");
-		goto fail;
-	}
-	
-	fdt_chosen[2] = start;
-	fdt_chosen[3] = end;
-	sprintf(start, "0x%x", (unsigned int)hdr->ramdisk_addr);
-	sprintf(end, "0x%x", (unsigned int)(hdr->ramdisk_addr + hdr->ramdisk_size));
-	status = do_fdt(NULL, 0, 4, fdt_chosen);
-	if(status) {
-		printf("booti: Could not set initrd_start and initrd_end\n");
-		goto fail;
-	}
-	
-	
-	theKernel = (void (*)(int, int, void *))(hdr->kernel_addr);
+	memset((void *)&images, 0, sizeof(images));
 
-	printf("Starting kernel...\n");
+	images.ep = hdr->kernel_addr;
+	images.rd_start = hdr->ramdisk_addr;
+	images.rd_end = hdr->ramdisk_addr + hdr->ramdisk_size;
 
-	theKernel(0, 0, NULL);
-	//theKernel(0, cfg_machine_type, (void *)dbt_addr);
+	setenv ("bootargs", (char *) &hdr->cmdline[0]);
+
+	do_bootm_linux(0, 0, NULL, &images);
 
 	puts("booti: Control returned to monitor - resetting...\n");
 fail:

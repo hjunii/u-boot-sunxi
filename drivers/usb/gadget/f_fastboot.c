@@ -46,7 +46,11 @@ static struct usb_string def_usb_fb_strings[] = {
 	{ FB_STR_SERIAL_IDX,		"1234567890" },
 	{ FB_STR_CONFIG_IDX,		"Android Fastboot" },
 	{ FB_STR_INTERFACE_IDX,		"Android Fastboot" },
+#if defined(CONFIG_SUNXI)
+	{ FB_STR_MANUFACTURER_IDX,      "Google" },
+#else
 	{ FB_STR_MANUFACTURER_IDX,	"Texas Instruments" },
+#endif
 	{ FB_STR_PROC_REV_IDX,		"ES2.0" },
 	{ FB_STR_PROC_TYPE_IDX,		"GP" },
 	{  }

@@ -74,5 +74,3 @@ void fastboot_flash_add_ptn(fastboot_ptentry *ptn, int count)
 	    pcount++;
 	}
 }
-
-

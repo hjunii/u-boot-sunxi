@@ -175,7 +175,6 @@ COBJS-$(CONFIG_CMD_ZIP) += cmd_zip.o
 COBJS-$(CONFIG_CMD_ZFS) += cmd_zfs.o
 
 COBJS-$(CONFIG_CMD_FASTBOOT) += cmd_fastboot.o
-COBJS-$(CONFIG_CMD_FASTBOOT) += mmc.o
 
 # others
 COBJS-$(CONFIG_BOOTSTAGE) += bootstage.o
