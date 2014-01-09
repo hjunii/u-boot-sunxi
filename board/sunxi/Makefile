@@ -85,6 +85,7 @@ COBJS-$(CONFIG_CMD_FASTBOOT)	+= mmc.o
 COBJS-$(CONFIG_CMD_FASTBOOT)	+= fastboot.o
 COBJS-$(CONFIG_CMD_FASTBOOT)	+= sparse.o
 COBJS-$(CONFIG_CMD_FASTBOOT)	+= device_tree.o
+COBJS-$(CONFIG_CMD_FASTBOOT)	+= android.o
 
 COBJS	:= $(COBJS-y)
 SRCS	:= $(COBJS:.o=.c)

@@ -188,7 +188,7 @@
 #else
 #define CONFIG_BOOTCOMMAND \
 	RUN_BOOT_RAM \
-	""
+	"run bootcmd"
 #endif
 
 #ifdef CONFIG_CMD_WATCHDOG

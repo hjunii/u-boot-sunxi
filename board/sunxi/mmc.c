@@ -406,8 +406,10 @@ int board_mmc_ftbtptn_init(void)
 	return load_ptbl();
 }
 
+int android_boot_check(void);
 int board_late_init(void)
 {
-	return load_ptbl();
-}
+	load_ptbl();
 
+	return android_boot_check();
+}
