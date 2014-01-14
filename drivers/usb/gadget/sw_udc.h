@@ -54,7 +54,7 @@ struct sw_udc_request {
 	struct list_head			queue;          /* ep's requests */
 	struct usb_request			req;
 
-	__u32 is_queue;
+	u32 is_queue;
 };
 
 enum ep0_state {
@@ -83,7 +83,7 @@ typedef struct sw_udc_io {
 	__hdle usb_bsp_hdle;                    /* usb bsp handle               */
 #endif
 
-	__u32 clk_is_open;                      /* is usb clock open?   */
+	u32 clk_is_open;                        /* is usb clock open?   */
 	struct clk      *sie_clk;               /* SIE clock handle     */
 	struct clk      *phy_clk;               /* PHY clock handle     */
 	struct clk      *phy0_clk;              /* PHY0 clock handle    */
@@ -95,8 +95,8 @@ typedef struct sw_udc {
 	struct sw_udc_ep                    	ep[SW_UDC_ENDPOINTS];
 	int                                     address;
 	struct usb_gadget                   	gadget;
-	struct usb_gadget_driver        	*driver;
-	struct sw_udc_request           	fifo_req;
+	struct usb_gadget_driver        	    *driver;
+	struct sw_udc_request           	    fifo_req;
 	u8                                      fifo_buf[SW_UDC_EP_FIFO_SIZE];
 	u16                                     devstatus;
 
@@ -113,7 +113,7 @@ typedef struct sw_udc {
 
 	sw_udc_io_t                             *sw_udc_io;
 	char                                    driver_name[32];
-	__u32                                   usbc_no;
+	u32                                     usbc_no;
 
 	u32                                     stoped;
 	u32                                     irq_no;
@@ -129,6 +129,66 @@ typedef struct sw_udc_mach_info {
 	struct usb_port_info *port_info;
 	unsigned int usbc_base;
 } sw_udc_mach_info_t;
+
+/* usb OTG mode */
+#define  SUNXI_OTG_HOST        0
+#define  SUNXI_OTG_DEVICE      1
+
+/* usb device type */
+#define  SUNXI_DEVICE_HSDEV    0
+#define  SUNXI_DEVICE_FSDEV    1
+#define  SUNXI_DEVICE_LSDEV    2
+
+/*  usb transfer type  */
+#define  SUNXI_TS_TYPE_IDLE    0
+#define  SUNXI_TS_TYPE_CTRL    1
+#define  SUNXI_TS_TYPE_ISO     2
+#define  SUNXI_TS_TYPE_INT     3
+#define  SUNXI_TS_TYPE_BULK    4
+
+/*  usb transfer mode  */
+#define  SUNXI_TS_MODE_UNKOWN  0
+#define  SUNXI_TS_MODE_LS      1
+#define  SUNXI_TS_MODE_FS      2
+#define  SUNXI_TS_MODE_HS      3
+
+/* usb Vbus status */
+#define  SUNXI_VBUS_STATUS_BELOW_SESSIONEND                 0
+#define  SUNXI_VBUS_STATUS_ABOVE_SESSIONEND_BELOW_AVALID    1
+#define  SUNXI_VBUS_STATUS_ABOVE_AVALID_BELOW_VBUSVALID     2
+#define  SUNXI_VBUS_STATUS_ABOVE_VBUSVALID                  3
+
+/* usb io type */
+#define  SUNXI_IO_TYPE_PIO                    0
+#define  SUNXI_IO_TYPE_DMA                    1
+
+/* usb ep type */
+#define  SUNXI_EP_TYPE_IDLE                   0
+#define  SUNXI_EP_TYPE_EP0                    1
+#define  SUNXI_EP_TYPE_TX                     2
+#define  SUNXI_EP_TYPE_RX                     3
+
+/* usb id type */
+#define  SUNXI_ID_TYPE_DISABLE              0
+#define  SUNXI_ID_TYPE_HOST                 1
+#define  SUNXI_ID_TYPE_DEVICE               2
+
+/* usb vbus valid type */
+#define  SUNXI_VBUS_TYPE_DISABLE            0
+#define  SUNXI_VBUS_TYPE_LOW                1
+#define  SUNXI_VBUS_TYPE_HIGH               2
+
+/* usb a valid source */
+#define  SUNXI_A_VALID_SOURCE_UTMI_AVALID        0
+#define  SUNXI_A_VALID_SOURCE_UTMI_VBUS          1
+
+/* usb device switch */
+#define  SUNXI_DEVICE_SWITCH_OFF    0
+#define  SUNXI_DEVICE_SWITCH_ON     1
+
+/* usb fifo config mode */
+#define  SUNXI_FIFO_MODE_4K    0
+#define  SUNXI_FIFO_MODE_8K    1
 
 /*-------------------------------------------------------------------------*/
 /* USB Power Control for Host only  */

@@ -1,4 +1,5 @@
 #include <common.h>
+#include <malloc.h>
 
 #include "sw_udc.h"
 
@@ -29,9 +30,931 @@ static const unsigned char TestPkt[54] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x
 	0xEF, 0xF7, 0xFB, 0xFD, 0xFC, 0x7E, 0xBF, 0xDF, 0xEF, 0xF7,
 	0xFB, 0xFD, 0x7E, 0x00};
 
+static u32 USBC_ReadLenFromFifo(void __iomem *base, u32 ep_type)
+{
+	switch (ep_type) {
+	case SUNXI_EP_TYPE_EP0:
+		  return readw(base + SUNXI_COUNT0);
+	case SUNXI_EP_TYPE_TX:
+		  return 0;
+	case SUNXI_EP_TYPE_RX:
+		  return readw(base + SUNXI_RXCOUNT);
+	default:
+		  return 0;
+	}
+}
+
+static u32 USBC_ReadPacket(void __iomem *base, u32 fifo, u32 cnt, void *buff)
+{
+    u32 len = 0;
+    u32 i32 = 0;
+    u32 i8  = 0;
+    u8  *buf8  = NULL;
+    u32 *buf32 = NULL;
+
+    buf32 = buff;
+    len   = cnt;
+
+    i32 = len >> 2;
+    i8  = len & 0x03;
+
+    while (i32--) {
+        *buf32++ = readl(fifo);
+    }
+    buf8 = (__u8 *)buf32;
+    while (i8--) {
+        *buf8++ = readb(fifo);
+    }
+
+    return len;
+}
+
+static u32 USBC_WritePacket(void __iomem *base, u32 fifo, u32 cnt, void *buff)
+{
+    u32 len = 0;
+    u32 i32 = 0;
+    u32 i8  = 0;
+    u8  *buf8  = NULL;
+    u32 *buf32 = NULL;
+
+    buf32 = buff;
+    len   = cnt;
+
+    i32 = len >> 2;
+    i8  = len & 0x03;
+
+    while (i32--) {
+        writel(*buf32++, fifo);
+    }
+
+    buf8 = (__u8 *)buf32;
+    while (i8--){
+        writeb(*buf8++, fifo);
+    }
+
+    return len;
+}
+
+static u32 USBC_GetActiveEp(void __iomem *base)
+{
+    return readb(base + SUNXI_EPIND);
+}
+
+static void USBC_SelectActiveEp(void __iomem *base, u8 ep_index)
+{
+    writeb(ep_index, base + SUNXI_EPIND);
+}
+
+static u32 USBC_SelectFIFO(void __iomem *base, u32 ep_index)
+{
+    return (u32) (base + SUNXI_EPFIFOx(ep_index));
+}
+
+static void __USBC_Dev_ep0_ReadDataComplete(void __iomem *base)
+{
+    writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END),
+            base + SUNXI_CSR0);
+}
+
+static void __USBC_Dev_Rx_ReadDataComplete(void __iomem *base)
+{
+    __u32 reg_val = 0;
+
+    reg_val = readw(base + SUNXI_RXCSR);
+    reg_val &= ~(1 << SUNXI_BP_RXCSR_D_RX_PKT_READY);
+    reg_val &= ~(1 << SUNXI_BP_RXCSR_D_OVERRUN);
+    reg_val &= ~(1 << SUNXI_BP_RXCSR_D_DATA_ERROR);
+    writew(reg_val, base + SUNXI_RXCSR);
+}
+
+static s32 __USBC_Dev_ReadDataComplete(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_ReadDataComplete(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        return -1;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_Dev_Rx_ReadDataComplete(base);
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static void __USBC_Dev_ep0_ReadDataHalf(void __iomem *base)
+{
+    writew(1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY, base + SUNXI_CSR0);
+}
+
+static void __USBC_Dev_Rx_ReadDataHalf(void __iomem *base)
+{
+    u32 reg_val = 0;
+
+    reg_val = readw(base + SUNXI_RXCSR);
+    reg_val &= ~(1 << SUNXI_BP_RXCSR_D_RX_PKT_READY);
+    reg_val &= ~(1 << SUNXI_BP_RXCSR_D_OVERRUN);
+    reg_val &= ~(1 << SUNXI_BP_RXCSR_D_DATA_ERROR);
+    writew(reg_val, base + SUNXI_RXCSR);
+}
+
+static s32 __USBC_Dev_ReadDataHalf(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_ReadDataHalf(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        return -1;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_Dev_Rx_ReadDataHalf(base);
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static s32 USBC_Dev_ReadDataStatus(void __iomem *base, u32 ep_type, u32 complete)
+{
+    if (complete) {
+        return __USBC_Dev_ReadDataComplete(base, ep_type);
+    } else {
+        return __USBC_Dev_ReadDataHalf(base, ep_type);
+    }
+}
+
+static void __USBC_Dev_ep0_WriteDataComplete(void __iomem *base)
+{
+    writew((1 << SUNXI_BP_CSR0_D_TX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END),
+            base + SUNXI_CSR0);
+}
+
+static void __USBC_Dev_Tx_WriteDataComplete(void __iomem *base)
+{
+    u16 ep_csr = 0;
+
+    ep_csr = readw(base + SUNXI_TXCSR);
+    ep_csr |= 1 << SUNXI_BP_TXCSR_D_TX_READY;
+    ep_csr &= ~(1 << SUNXI_BP_TXCSR_D_UNDER_RUN);
+    writew(ep_csr, base + SUNXI_TXCSR);
+}
+
+static s32 __USBC_Dev_WriteDataComplete(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_WriteDataComplete(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_Dev_Tx_WriteDataComplete(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        return -1;
+    default:
+        return -1;
+    }
+
+    return 0;
+}
+
+static void __USBC_Dev_ep0_WriteDataHalf(void __iomem *base)
+{
+    writew(1 << SUNXI_BP_CSR0_D_TX_PKT_READY, base + SUNXI_CSR0);
+}
+
+static void __USBC_Dev_Tx_WriteDataHalf(void __iomem *base)
+{
+    u16 ep_csr = 0;
+
+    ep_csr = readw(base + SUNXI_TXCSR);
+    ep_csr |= 1 << SUNXI_BP_TXCSR_D_TX_READY;
+    ep_csr &= ~(1 << SUNXI_BP_TXCSR_D_UNDER_RUN);
+    writew(ep_csr, base + SUNXI_TXCSR);
+}
+
+static s32 __USBC_Dev_WriteDataHalf(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_WriteDataHalf(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_Dev_Tx_WriteDataHalf(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        return -1;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static s32 USBC_Dev_WriteDataStatus(void __iomem *base, u32 ep_type, u32 complete)
+{
+    if (complete) {
+        return __USBC_Dev_WriteDataComplete(base, ep_type);
+    } else {
+        return __USBC_Dev_WriteDataHalf(base, ep_type);
+    }
+}
+
+static u32 __USBC_Dev_ep0_IsEpStall(void __iomem *base)
+{
+    return readw(base + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_SENT_STALL);
+}
+
+static u32 __USBC_Dev_Tx_IsEpStall(void __iomem *base)
+{
+    return readw(base + SUNXI_TXCSR) & (1 << SUNXI_BP_TXCSR_D_SENT_STALL);
+}
+
+static u32 __USBC_Dev_Rx_IsEpStall(void __iomem *base)
+{
+    return readw(base + SUNXI_RXCSR) & (1 << SUNXI_BP_RXCSR_D_SENT_STALL);
+}
+
+static s32 USBC_Dev_IsEpStall(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_IsEpStall(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_Dev_Tx_IsEpStall(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_Dev_Rx_IsEpStall(base);
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static u32 __USBC_Dev_ep0_IsReadDataReady(void __iomem *base)
+{
+    return readw(base + SUNXI_CSR0) & SUNXI_BP_CSR0_D_RX_PKT_READY;
+}
+
+static u32 __USBC_Dev_Rx_IsReadDataReady(void __iomem *base)
+{
+    return readw(base + SUNXI_RXCSR) & SUNXI_BP_RXCSR_D_RX_PKT_READY;
+}
+
+static u32 USBC_Dev_IsReadDataReady(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        return __USBC_Dev_ep0_IsReadDataReady(base);
+    case SUNXI_EP_TYPE_TX:
+        break;
+    case SUNXI_EP_TYPE_RX:
+        return __USBC_Dev_Rx_IsReadDataReady(base);
+    default:
+        break;
+    }
+    return 0;
+}
+
+static u32 __USBC_Dev_ep0_IsWriteDataReady(void __iomem *base)
+{
+    return readw(base + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_TX_PKT_READY);
+}
+
+
+static u32 __USBC_Dev_Tx_IsWriteDataReady(void __iomem *base)
+{
+    u32 temp = 0;
+
+    temp = readw(base + SUNXI_TXCSR);
+    temp &= (1 << SUNXI_BP_TXCSR_D_TX_READY) | (1 << SUNXI_BP_TXCSR_D_FIFO_NOT_EMPTY);
+
+    return temp;
+}
+
+u32 USBC_Dev_IsWriteDataReady(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        return __USBC_Dev_ep0_IsWriteDataReady(base);
+    case SUNXI_EP_TYPE_TX:
+        return __USBC_Dev_Tx_IsWriteDataReady(base);
+    case SUNXI_EP_TYPE_RX:
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static void __USBC_Dev_ep0_SendStall(void __iomem *base)
+{
+    setbits_le16(base + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SEND_STALL);
+}
+
+static void __USBC_Dev_Tx_SendStall(void __iomem *base)
+{
+    setbits_le16(base + SUNXI_TXCSR, 1 << SUNXI_BP_TXCSR_D_SEND_STALL);
+}
+
+static void __USBC_Dev_Rx_SendStall(void __iomem *base)
+{
+    setbits_le16(base + SUNXI_RXCSR, 1 << SUNXI_BP_RXCSR_D_SEND_STALL);
+}
+
+static s32 USBC_Dev_EpSendStall(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_SendStall(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_Dev_Tx_SendStall(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_Dev_Rx_SendStall(base);
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static void __USBC_Dev_ep0_ClearStall(void __iomem *base)
+{
+    clrbits_le16(base + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SEND_STALL));
+    clrbits_le16(base + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SENT_STALL));
+}
+
+static void __USBC_Dev_Tx_ClearStall(void __iomem *base)
+{
+    u32 reg_val;
+
+    reg_val = readw(base + SUNXI_TXCSR);
+    reg_val &= ~((1 << SUNXI_BP_TXCSR_D_SENT_STALL) | (1 << SUNXI_BP_TXCSR_D_SEND_STALL));
+    writew(reg_val, base + SUNXI_TXCSR);
+}
+
+static void __USBC_Dev_Rx_ClearStall(void __iomem *base)
+{
+    clrbits_le16(base + SUNXI_RXCSR, (1 << SUNXI_BP_RXCSR_D_SEND_STALL));
+    clrbits_le16(base + SUNXI_RXCSR, (1 << SUNXI_BP_RXCSR_D_SENT_STALL));
+}
+
+static s32 USBC_Dev_EpClearStall(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_ClearStall(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_Dev_Tx_ClearStall(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_Dev_Rx_ClearStall(base);
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static u32 __USBC_Dev_ep0_IsSetupEnd(void __iomem *base)
+{
+        return readw(base + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_SETUP_END);
+}
+
+static u32 USBC_Dev_Ctrl_IsSetupEnd(void __iomem *base)
+{
+    return __USBC_Dev_ep0_IsSetupEnd(base);
+}
+
+static void __USBC_Dev_ep0_ClearSetupEnd(void __iomem *base)
+{
+    setbits_le16(base + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SERVICED_SETUP_END);
+}
+
+static void USBC_Dev_Ctrl_ClearSetupEnd(void __iomem *base)
+{
+    __USBC_Dev_ep0_ClearSetupEnd(base);
+}
+
+void USBC_Dev_SetAddress_default(void __iomem *base)
+{
+    writeb(0x00, base + SUNXI_FADDR);
+}
+
+static void USBC_Dev_SetAddress(void __iomem *base, u8 address)
+{
+    writeb(address, base + SUNXI_FADDR);
+}
+
+static void USBC_EnterMode_TestPacket(void __iomem *base)
+{
+    setbits_8(base + SUNXI_TMCTL, 1 << SUNXI_BP_TMCTL_TEST_PACKET);
+}
+
+static void USBC_INT_ClearMiscPending(void __iomem *base, u32 mask)
+{
+    writeb(mask, base + SUNXI_INTUSB);
+}
+
+static void __USBC_INT_ClearTxPendingAll(void __iomem *base)
+{
+    writew(0xffff, base + SUNXI_INTTx);
+}
+
+static void __USBC_INT_ClearRxPendingAll(void __iomem *base)
+{
+    writew(0xffff, base + SUNXI_INTRx);
+}
+
+static void USBC_INT_ClearEpPendingAll(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+    case SUNXI_EP_TYPE_TX:
+        __USBC_INT_ClearTxPendingAll(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_INT_ClearRxPendingAll(base);
+        break;
+    default:
+        break;
+    }
+}
+
+static void USBC_INT_ClearMiscPendingAll(void __iomem *base)
+{
+    writeb(0xff, base + SUNXI_INTUSB);
+}
+
+static u32 __USBC_INT_TxPending(void __iomem *base)
+{
+    return readw(base + SUNXI_INTTx);
+}
+
+static u32 __USBC_INT_RxPending(void __iomem *base)
+{
+    return readw(base + SUNXI_INTRx);
+}
+
+static u32 USBC_INT_EpPending(void __iomem *base, u32 ep_type)
+{
+    switch(ep_type){
+    case SUNXI_EP_TYPE_EP0:
+    case SUNXI_EP_TYPE_TX:
+        return __USBC_INT_TxPending(base);        
+    case SUNXI_EP_TYPE_RX:
+        return __USBC_INT_RxPending(base);
+    default:
+        return 0;
+    }
+}
+
+static u32 USBC_INT_MiscPending(void __iomem *base)
+{
+    return readb(base + SUNXI_INTUSB);
+}
+
+static void __USBC_INT_ClearTxPending(void __iomem *base, u8 ep_index)
+{
+    writew((1 << ep_index), base + SUNXI_INTTx);
+}
+
+static void __USBC_INT_ClearRxPending(void __iomem *base, u8 ep_index)
+{
+    writew((1 << ep_index), base + SUNXI_INTRx);
+}
+
+static void USBC_INT_ClearEpPending(void __iomem *base, u32 ep_type, u8 ep_index)
+{
+    switch(ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+    case SUNXI_EP_TYPE_TX:
+        __USBC_INT_ClearTxPending(base, ep_index);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_INT_ClearRxPending(base, ep_index);
+        break;   
+    default:
+        break;
+    }
+    return;
+}
+
+static u32 USBC_Dev_QueryTransferMode(void __iomem *base)
+{
+    if (readb(base + SUNXI_PCTL) & (1 << SUNXI_BP_POWER_D_HIGH_SPEED_FLAG))
+        return SUNXI_TS_MODE_HS;
+    else
+        return SUNXI_TS_MODE_FS;
+}
+
+static void __USBC_Dev_ep0_ConfigEp0(void __iomem *base)
+{
+    writew(1 << SUNXI_BP_CSR0_D_FLUSH_FIFO, base + SUNXI_CSR0);
+}
+
+static void __USBC_Dev_Tx_EnableIsoEp(void __iomem *base)
+{
+    setbits_le16(base + SUNXI_TXCSR, 1 << SUNXI_BP_TXCSR_D_ISO);
+}
+
+static void __USBC_Dev_Tx_EnableIntEp(void __iomem *base)
+{
+    clrbits_le16(base + SUNXI_TXCSR, 1 << SUNXI_BP_TXCSR_D_ISO);
+}
+
+static void __USBC_Dev_Tx_EnableBulkEp(void __iomem *base)
+{
+    clrbits_le16(base + SUNXI_TXCSR, 1 << SUNXI_BP_TXCSR_D_ISO);
+}
+
+static void __USBC_Dev_Tx_ConfigEp(void __iomem *base, u32 ts_type, u32 is_double_fifo, u32 ep_MaxPkt)
+{
+    u16 reg_val = 0;
+    u16 temp = 0;
+
+    reg_val = (1 << SUNXI_BP_TXCSR_D_MODE);
+    reg_val |= (1 << SUNXI_BP_TXCSR_D_CLEAR_DATA_TOGGLE);
+    reg_val |= (1 << SUNXI_BP_TXCSR_D_FLUSH_FIFO);
+    writew(reg_val, base + SUNXI_TXCSR);
+
+    if (is_double_fifo) {
+        writew(reg_val, base + SUNXI_TXCSR);
+    }
+
+    reg_val = readw(base + SUNXI_TXMAXP);
+    temp    = ep_MaxPkt & ((1 << SUNXI_BP_TXMAXP_PACKET_COUNT) - 1);
+    reg_val |= temp;
+    writew(reg_val, base + SUNXI_TXMAXP);
+
+    switch (ts_type) {
+    case SUNXI_TS_TYPE_ISO:
+        __USBC_Dev_Tx_EnableIsoEp(base);
+        break;
+    case SUNXI_TS_TYPE_INT:
+        __USBC_Dev_Tx_EnableIntEp(base);
+        break;
+    case SUNXI_TS_TYPE_BULK:
+        __USBC_Dev_Tx_EnableBulkEp(base);
+        break;
+    default:
+        __USBC_Dev_Tx_EnableBulkEp(base);
+    }
+}
+
+static void __USBC_Dev_Rx_EnableIsoEp(void __iomem *base)
+{
+    setbits_le16(base + SUNXI_RXCSR, 1 << SUNXI_BP_RXCSR_D_ISO);
+}
+
+static void __USBC_Dev_Rx_EnableIntEp(void __iomem *base)
+{
+    clrbits_le16(base + SUNXI_RXCSR, 1 << SUNXI_BP_RXCSR_D_ISO);
+}
+
+static void __USBC_Dev_Rx_EnableBulkEp(void __iomem *base)
+{
+    clrbits_le16(base + SUNXI_RXCSR, 1 << SUNXI_BP_RXCSR_D_ISO);
+}
+
+static void __USBC_Dev_Rx_ConfigEp(void __iomem *base, u32 ts_type, u32 is_double_fifo, u32 ep_MaxPkt)
+{
+    u16 reg_val = 0;
+    u16 temp = 0;
+
+    writew((1 << SUNXI_BP_RXCSR_D_CLEAR_DATA_TOGGLE) | (1 << SUNXI_BP_RXCSR_D_FLUSH_FIFO),
+            base + SUNXI_RXCSR);
+
+    if (is_double_fifo) {
+        writew((1 << SUNXI_BP_RXCSR_D_CLEAR_DATA_TOGGLE) | (1 << SUNXI_BP_RXCSR_D_FLUSH_FIFO),
+                base + SUNXI_RXCSR);
+    }
+
+    reg_val = readw(base + SUNXI_RXMAXP);
+    temp    = ep_MaxPkt & ((1 << SUNXI_BP_RXMAXP_PACKET_COUNT) - 1);
+    reg_val |= temp;
+    writew(reg_val, base + SUNXI_RXMAXP);
+
+    switch (ts_type) {
+    case SUNXI_TS_TYPE_ISO:
+        __USBC_Dev_Rx_EnableIsoEp(base);
+        break;
+    case SUNXI_TS_TYPE_INT:
+        __USBC_Dev_Rx_EnableIntEp(base);
+        break;
+    case SUNXI_TS_TYPE_BULK:
+        __USBC_Dev_Rx_EnableBulkEp(base);
+        break;
+    default:
+        __USBC_Dev_Rx_EnableBulkEp(base);
+    }
+}
+
+static s32 USBC_Dev_ConfigEp(void __iomem *base, u32 ts_type, u32 ep_type, u32 is_double_fifo, u32 ep_MaxPkt)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_ConfigEp0(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_Dev_Tx_ConfigEp(base, ts_type, is_double_fifo,  ep_MaxPkt);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_Dev_Rx_ConfigEp(base, ts_type, is_double_fifo, ep_MaxPkt);
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static void __USBC_ConfigFifo_TxEp(void __iomem *base, u32 is_double_fifo, u32 fifo_size, u32 fifo_addr)
+{
+    u32 temp = 0;
+    u32 size = 0;
+    u32 addr = 0;
+
+    temp = fifo_size + 511;
+    temp &= ~511;
+    temp >>= 3;
+    temp >>= 1;
+    while (temp) {
+        size++;
+        temp >>= 1;
+    }
+
+    addr = fifo_addr >> 3;
+
+    writew(addr, base + SUNXI_TXFIFOAD);
+
+    writeb((size & 0x0f), base + SUNXI_TXFIFOSZ);
+    if (is_double_fifo) {
+        setbits_8(base + SUNXI_TXFIFOSZ, 1 << SUNXI_BP_TXFIFOSZ_DPB);
+    }
+}
+
+static void __USBC_ConfigFifo_RxEp(void __iomem *base, u32 is_double_fifo, u32 fifo_size, u32 fifo_addr)
+{
+    u32 temp = 0;
+    u32 size = 0;
+    u32 addr = 0;
+
+    temp = fifo_size + 511;
+    temp &= ~511;
+    temp >>= 3;
+    temp >>= 1;
+    while (temp) {
+        size++;
+        temp >>= 1;
+    }
+
+    addr = fifo_addr >> 3;
+
+    writew(addr, base + SUNXI_RXFIFOAD);
+
+    writeb((size & 0x0f), base + SUNXI_RXFIFOSZ);
+    if (is_double_fifo) {
+        setbits_8(base + SUNXI_RXFIFOSZ, 1 << SUNXI_BP_RXFIFOSZ_DPB);
+    }
+}
+
+static void USBC_ConfigFifo(void __iomem *base, u32 ep_type, u32 is_double_fifo, u32 fifo_size, u32 fifo_addr)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_ConfigFifo_TxEp(base, is_double_fifo, fifo_size, fifo_addr);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_ConfigFifo_RxEp(base, is_double_fifo, fifo_size, fifo_addr);
+        break;
+    default:
+        break;
+    }
+}
+
+static void __USBC_INT_EnableTxEp(void __iomem *base, u8 ep_index)
+{
+    setbits_le16(base + SUNXI_INTTxE, ep_index);
+}
+
+static void __USBC_INT_EnableRxEp(void __iomem *base, u8 ep_index)
+{
+    setbits_le16(base + SUNXI_INTRxE, ep_index);
+}
+
+static void USBC_INT_EnableEp(void __iomem *base, u32 ep_type, u8 ep_index)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_TX:
+        __USBC_INT_EnableTxEp(base, ep_index);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_INT_EnableRxEp(base, ep_index);
+        break;
+    default:
+        break;
+    }
+    return;
+}
+
+static void __USBC_Dev_ep0_ConfigEp0_Default(void __iomem *base)
+{
+    writew(1 << SUNXI_BP_CSR0_D_FLUSH_FIFO, base + SUNXI_CSR0);
+}
+
+static void __USBC_Dev_Tx_ConfigEp_Default(void __iomem *base)
+{
+    writew(0x00, base + SUNXI_TXCSR);
+    writew(0x00, base + SUNXI_TXMAXP);
+}
+
+static void __USBC_Dev_Rx_ConfigEp_Default(void __iomem *base)
+{
+    writew(0x00, base + SUNXI_RXCSR);
+    writew(0x00, base + SUNXI_RXMAXP);
+}
+
+static s32 USBC_Dev_ConfigEp_Default(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_EP0:
+        __USBC_Dev_ep0_ConfigEp0_Default(base);
+        break;
+    case SUNXI_EP_TYPE_TX:
+        __USBC_Dev_Tx_ConfigEp_Default(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_Dev_Rx_ConfigEp_Default(base);
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+static void __USBC_INT_DisableTxEp(void __iomem *base, u8 ep_index)
+{
+    clrbits_le16(base + SUNXI_INTTxE, 1 << ep_index);
+}
+
+static void __USBC_INT_DisableRxEp(void __iomem *base, u8 ep_index)
+{
+    clrbits_le16(base + SUNXI_INTRxE, 1 << ep_index);
+}
+
+void USBC_INT_DisableEp(void __iomem *base, u32 ep_type, u8 ep_index)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_TX:
+        __USBC_INT_DisableTxEp(base, ep_index);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_INT_DisableRxEp(base, ep_index);
+        break;
+    default:
+        break;
+    }
+    return;
+}
+
+static void __USBC_Dev_TsType_default(void __iomem *base)
+{
+    clrbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_ISO_UPDATE_EN);
+}
+
+static void __USBC_Dev_TsType_Ctrl(void __iomem *base)
+{
+    clrbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_ISO_UPDATE_EN);
+}
+
+static void __USBC_Dev_TsType_Iso(void __iomem *base)
+{
+    setbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_ISO_UPDATE_EN);
+}
+
+static void __USBC_Dev_TsType_Int(void __iomem *base)
+{
+    clrbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_ISO_UPDATE_EN);
+}
+
+static void __USBC_Dev_TsType_Bulk(void __iomem *base)
+{
+    clrbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_ISO_UPDATE_EN);
+}
+
+static void __USBC_Dev_TsMode_default(void __iomem *base)
+{
+    clrbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_HIGH_SPEED_EN);
+}
+
+static void __USBC_Dev_TsMode_Hs(void __iomem *base)
+{
+    setbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_HIGH_SPEED_EN);
+}
+
+static void __USBC_Dev_TsMode_Fs(void __iomem *base)
+{
+    clrbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_HIGH_SPEED_EN);
+}
+
+static void __USBC_Dev_TsMode_Ls(void __iomem *base)
+{
+    __USBC_Dev_TsMode_Fs(base);
+}
+
+void USBC_Dev_ConfigTransferMode(void __iomem *base, u8 ts_type, u8 speed_mode)
+{
+    switch (ts_type) {
+    case SUNXI_TS_TYPE_CTRL:
+        __USBC_Dev_TsType_Ctrl(base);
+        break;
+    case SUNXI_TS_TYPE_ISO:
+        __USBC_Dev_TsType_Iso(base);
+        break;
+    case SUNXI_TS_TYPE_INT:
+        __USBC_Dev_TsType_Int(base);
+        break;
+    case SUNXI_TS_TYPE_BULK:
+        __USBC_Dev_TsType_Bulk(base);
+        break;
+    default:
+        __USBC_Dev_TsType_default(base);
+    }
+
+    switch (speed_mode) {
+    case SUNXI_TS_MODE_HS:
+        __USBC_Dev_TsMode_Hs(base);
+        break;
+    case SUNXI_TS_MODE_FS:
+        __USBC_Dev_TsMode_Fs(base);
+        break;
+    case SUNXI_TS_MODE_LS:
+        __USBC_Dev_TsMode_Ls(base);
+        break;
+    default:
+        __USBC_Dev_TsMode_default(base);
+    }
+}
+
+static void USBC_INT_EnableUsbMiscUint(void __iomem *base, u32 mask)
+{
+    u32 reg_val = 0;
+
+    reg_val = readb(base + SUNXI_INTUSBE);
+    reg_val |= mask;
+    writeb(reg_val, SUNXI_INTUSBE);
+}
+
+static void USBC_INT_DisableUsbMiscAll(void __iomem *base)
+{
+    writeb(0, base + SUNXI_INTUSBE);
+}
+
+static void __USBC_INT_DisableTxAll(void __iomem *base)
+{
+    writew(0, base + SUNXI_INTTxE);
+}
+
+static void __USBC_INT_DisableRxAll(void __iomem *base)
+{
+    writew(0, base + SUNXI_INTRxE);
+}
+
+static void USBC_INT_DisableEpAll(void __iomem *base, u32 ep_type)
+{
+    switch (ep_type) {
+    case SUNXI_EP_TYPE_TX:
+        __USBC_INT_DisableTxAll(base);
+        break;
+    case SUNXI_EP_TYPE_RX:
+        __USBC_INT_DisableRxAll(base);
+        break;
+    default:
+        break;
+    }
+    return;
+}
+
+static void USBC_Dev_ConectSwitch(void __iomem *base, u32 is_on)
+{
+    if (is_on == SUNXI_DEVICE_SWITCH_ON) {
+        setbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_SOFT_CONNECT);
+    } else {
+        clrbits_8(base + SUNXI_PCTL, 1 << SUNXI_BP_POWER_D_SOFT_CONNECT);
+    }
+}
+
 static void cfg_udc_command(enum sw_udc_cmd_e cmd);
 
-static __u32 is_peripheral_active(void)
+static u32 is_peripheral_active(void)
 {
 	return is_controller_alive;
 }
@@ -74,14 +997,12 @@ static void sw_udc_nuke(struct sw_udc *udc, struct sw_udc_ep *ep, int status)
 	}
 }
 
-static inline int sw_udc_fifo_count_out(__u8 ep_index)
+static inline int sw_udc_fifo_count_out(u8 ep_index)
 {
 	if (ep_index) {
-		//return USBC_ReadLenFromFifo(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-		return readw(g_sw_udc_io.usb_vbase + SUNXI_RXCOUNT);
+		return USBC_ReadLenFromFifo(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
 	} else {
-		//return USBC_ReadLenFromFifo(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-		return readw(g_sw_udc_io.usb_vbase + SUNXI_COUNT0);
+		return USBC_ReadLenFromFifo(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
 	}
 }
 
@@ -91,10 +1012,6 @@ static inline int sw_udc_write_packet(int fifo,
 {
 	unsigned len = min(req->req.length - req->req.actual, max);
 	u8 *buf = req->req.buf + req->req.actual;
-	__u32 i32 = 0;
-	__u32 i8  = 0;
-	__u8  *buf8  = NULL;
-	__u32 *buf32 = NULL;
 
 	prefetch(buf);
 
@@ -104,20 +1021,7 @@ static inline int sw_udc_write_packet(int fifo,
 	req->req.actual += len;
 
 	udelay(5);
-	//USBC_WritePacket(g_sw_udc_io.usb_bsp_hdle, fifo, len, buf);
-	buf32 = buf;
-
-	i32 = len >> 2;
-	i8 = len & 0x03;
-
-	while (i32--) {
-		writel(*buf32++, fifo);
-	}
-
-	buf8 = (__u8 *)buf32;
-	while (i8--) {
-		writeb(*buf8++, fifo);
-	}
+	USBC_WritePacket(g_sw_udc_io.usb_vbase, fifo, len, buf);
 
 	return len;
 }
@@ -128,22 +1032,17 @@ static int sw_udc_write_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 	int is_last = 0;
 	u32 idx = 0;
 	int fifo_reg = 0;
-	__s32 ret = 0;
+	s32 ret = 0;
 	u8 old_ep_index = 0;
-	__u16 ep_csr = 0;
 
 	idx = ep->bEndpointAddress & 0x7F;
 
 	/* select ep */
-	//old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_index = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, idx);
-	writeb(idx, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, idx);
 
 	/* select fifo */
-	//fifo_reg = USBC_SelectFIFO(g_sw_udc_io.usb_bsp_hdle, idx);
-	//USBC_REG_EPFIFOx(usbc_otg->base_addr, ep_index);
-	fifo_reg = g_sw_udc_io.usb_vbase + SUNXI_EPFIFOx(idx);
+	fifo_reg = USBC_SelectFIFO(g_sw_udc_io.usb_vbase, idx);
 
 	count = sw_udc_write_packet(fifo_reg, req, ep->ep.maxpacket);
 
@@ -161,45 +1060,21 @@ static int sw_udc_write_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 			req, &(req->req), req->req.length, req->req.actual,
 			count, is_last);
 
-	if (idx) {  //ep1~4
-		//ret = USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX, is_last);
-		if (is_last)
-		{
-			//__USBC_Dev_WriteDataComplete(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_Tx_WriteDataComplete(usbc_base_addr);
-			ep_csr = readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-			ep_csr |= 1 << SUNXI_BP_TXCSR_D_TX_READY;
-			ep_csr &= ~(1 << SUNXI_BP_TXCSR_D_UNDER_RUN);
-			writew(ep_csr, g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-		}
-		else
-		{
-			//__USBC_Dev_WriteDataHalf(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_Tx_WriteDataHalf(usbc_base_addr);
-			ep_csr = readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-			ep_csr |= 1 << SUNXI_BP_TXCSR_D_TX_READY;
-			ep_csr &= ~(1 << SUNXI_BP_TXCSR_D_UNDER_RUN);
-			writew(ep_csr, g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-		}
-	} else {  //ep0
-		//ret = USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, is_last);
-		if (is_last)
-		{
-			//__USBC_Dev_WriteDataComplete(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_ep0_WriteDataComplete(usbc_base_addr);
-			writew((1 << SUNXI_BP_CSR0_D_TX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END),
-					g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-		}
-		else
-		{
-			//__USBC_Dev_WriteDataHalf(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_ep0_WriteDataHalf(usbc_base_addr);
-			writew(1 << SUNXI_BP_CSR0_D_TX_PKT_READY, g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-		}
+	if (idx) { // ep1~4
+		ret = USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX, is_last);
+        if (ret != 0) {
+            printf("ERR: USBC_Dev_WriteDataStatus, failed\n");
+            req->req.status = -EOVERFLOW;
+        }
+	} else { // ep0
+		ret = USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, is_last);
+        if (ret != 0) {
+            printf("ERR: USBC_Dev_WriteDataStatus, failed\n");
+            req->req.status = -EOVERFLOW;
+        }
 	}
 
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);
-	writeb(old_ep_index, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_index);
 
 	if (is_last) {
 		if (!idx) {  /* ep0 */
@@ -217,10 +1092,6 @@ static inline int sw_udc_read_packet(int fifo, u8 *buf,
 		struct sw_udc_request *req, unsigned avail)
 {
 	unsigned len = 0;
-	__u32 i32 = 0;
-	__u32 i8  = 0;
-	__u8  *buf8  = NULL;
-	__u32 *buf32 = NULL;
 
 	len = min(req->req.length - req->req.actual, avail);
 	req->req.actual += len;
@@ -228,20 +1099,7 @@ static inline int sw_udc_read_packet(int fifo, u8 *buf,
 	debug("R: req.actual(%d), req.length(%d), len(%d), total(%d)\n",
 			req->req.actual, req->req.length, len, req->req.actual + len);
 
-	//USBC_ReadPacket(g_sw_udc_io.usb_bsp_hdle, fifo, len, buf);
-	buf32 = buf;
-
-	i32 = len >> 2;
-	i8  = len & 0x03;
-
-	while (i32--) {
-		*buf32++ = readl(fifo);
-	}
-
-	buf8 = (__u8 *)buf32;
-	while (i8--) {
-		*buf8++ = readb(fifo);
-	}
+	USBC_ReadPacket(g_sw_udc_io.usb_vbase, fifo, len, buf);
 
 	return len;
 }
@@ -252,24 +1110,15 @@ static int sw_udc_read_fifo_crq(struct usb_ctrlrequest *crq)
 	u32 i = 0;
 	u8  *pOut = (u8 *) crq;
 	u32 fifo = 0;
-	unsigned len = 0;
-	__u32 i32 = 0;
-	__u32 i8  = 0;
-	__u8  *buf8  = NULL;
-	__u32 *buf32 = NULL;
 
-	//fifo = USBC_SelectFIFO(g_sw_udc_io.usb_bsp_hdle, 0);
-	//USBC_REG_EPFIFOx(usbc_otg->base_addr, ep_index);
-	fifo = g_sw_udc_io.usb_vbase + SUNXI_EPFIFOx(0);
-	//fifo_count = USBC_ReadLenFromFifo(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-	fifo_count = readw(g_sw_udc_io.usb_vbase + SUNXI_COUNT0);
+	fifo = USBC_SelectFIFO(g_sw_udc_io.usb_vbase, 0);
+	fifo_count = USBC_ReadLenFromFifo(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
 
 	if (fifo_count != 8) {
 		i = 0;
 
 		while (i < 16 && (fifo_count != 8)) {
-			//fifo_count = USBC_ReadLenFromFifo(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-			fifo_count = readw(g_sw_udc_io.usb_vbase + SUNXI_COUNT0);
+			fifo_count = USBC_ReadLenFromFifo(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
 			i++;
 		}
 
@@ -278,23 +1127,7 @@ static int sw_udc_read_fifo_crq(struct usb_ctrlrequest *crq)
 		}
 	}
 
-	//return USBC_ReadPacket(g_sw_udc_io.usb_bsp_hdle, fifo, fifo_count, pOut);
-
-	buf32 = pOut;
-
-	i32 = fifo_count >> 2;
-	i8  = fifo_count & 0x03;
-
-	while (i32--) {
-		*buf32++ = readl(fifo);
-	}
-
-	buf8 = (__u8 *)buf32;
-	while (i8--) {
-		*buf8++ = readb(fifo);
-	}
-
-	return fifo_count;
+	return USBC_ReadPacket(g_sw_udc_io.usb_vbase, fifo, fifo_count, pOut);
 }
 
 static int sw_udc_read_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
@@ -306,16 +1139,13 @@ static int sw_udc_read_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 	int fifo_count = 0;
 	u32 idx = 0;
 	int fifo_reg = 0;
-	__s32 ret = 0;
+	s32 ret = 0;
 	u8 old_ep_index = 0;
-	__u32 reg_val = 0;
 
 	idx = ep->bEndpointAddress & 0x7F;
 
 	/* select fifo */
-	//fifo_reg = USBC_SelectFIFO(g_sw_udc_io.usb_bsp_hdle, idx);
-	//USBC_REG_EPFIFOx(usbc_otg->base_addr, ep_index);
-	fifo_reg = g_sw_udc_io.usb_vbase + SUNXI_EPFIFOx(idx);
+	fifo_reg = USBC_SelectFIFO(g_sw_udc_io.usb_vbase, idx);
 
 	if (!req->req.length) {
 		printf("ERR: req->req.length == 0\n");
@@ -330,10 +1160,8 @@ static int sw_udc_read_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 	}
 
 	/* select ep */
-	//old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_index = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, idx);
-	writeb(idx, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, idx);
 
 	fifo_count = sw_udc_fifo_count_out(idx);
 	if (fifo_count > ep->ep.maxpacket) {
@@ -345,8 +1173,8 @@ static int sw_udc_read_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 	fifo_count = sw_udc_read_packet(fifo_reg, buf, req, avail);
 
 	/* checking this with ep0 is not accurate as we already
-	 *          * read a control request
-	 *                   **/
+	 * read a control request
+	 */
 	if (idx != 0 && fifo_count < ep->ep.maxpacket) {
 		is_last = 1;
 		/* overflowed this request?  flush extra data */
@@ -362,48 +1190,20 @@ static int sw_udc_read_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 			fifo_count, is_last);
 
 	if (idx) {
-		//ret = USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX, is_last);
-		if (is_last)
-		{
-			//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_Rx_ReadDataComplete(usbc_base_addr);
-			//overrun, dataerr is used in iso transfer
-			reg_val = readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-			reg_val &= ~(1 << SUNXI_BP_RXCSR_D_RX_PKT_READY);
-			reg_val &= ~(1 << SUNXI_BP_RXCSR_D_OVERRUN);
-			reg_val &= ~(1 << SUNXI_BP_RXCSR_D_DATA_ERROR);
-			writew(reg_val, g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-		}
-		else
-		{
-			//__USBC_Dev_ReadDataHalf(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_Rx_ReadDataHalf(usbc_base_addr);
-			//overrun, dataerr is used in iso transfer
-			reg_val = readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-			reg_val &= ~(1 << SUNXI_BP_RXCSR_D_RX_PKT_READY);
-			reg_val &= ~(1 << SUNXI_BP_RXCSR_D_OVERRUN);
-			reg_val &= ~(1 << SUNXI_BP_RXCSR_D_DATA_ERROR);
-			writew(reg_val, g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-		}
+		ret = USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX, is_last);
+        if (ret != 0){
+            printf("ERR: sw_udc_read_fifo: USBC_Dev_WriteDataStatus, failed\n");
+            req->req.status = -EOVERFLOW;
+        }
 	} else {
-		//ret = USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, is_last);
-		if (is_last)
-		{
-			//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-			writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END),
-					g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-		}
-		else
-		{
-			//__USBC_Dev_ReadDataHalf(usbc_otg->base_addr, ep_type);
-			//__USBC_Dev_ep0_ReadDataHalf(usbc_base_addr);
-			writew(1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY, g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-		}
+		ret = USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, is_last);
+        if (ret != 0){
+            printf("ERR: sw_udc_read_fifo: USBC_Dev_WriteDataStatus, failed\n");
+            req->req.status = -EOVERFLOW;
+        }
 	}
 
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);
-	writeb(old_ep_index, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_index);
 
 	if (is_last) {
 		if (!idx) {
@@ -424,90 +1224,55 @@ static int sw_udc_get_status(struct sw_udc *dev, struct usb_ctrlrequest *crq)
 	u8 ep_num = crq->wIndex & 0x7F;
 	u8 is_in = crq->wIndex & USB_DIR_IN;
 	u32 fifo = 0;
-	__u32 i32 = 0;
-	__u32 i8  = 0;
-	__u8  *buf8  = NULL;
-	__u32 *buf32 = NULL;
 
 	switch (crq->bRequestType & USB_RECIP_MASK) {
-		case USB_RECIP_INTERFACE:
-			buf[0] = 0x00;
-			buf[1] = 0x00;
-			break;
+    case USB_RECIP_INTERFACE:
+        buf[0] = 0x00;
+        buf[1] = 0x00;
+        break;
 
-		case USB_RECIP_DEVICE:
-			status = dev->devstatus;
-			buf[0] = 0x01;
-			buf[1] = 0x00;
-			break;
+    case USB_RECIP_DEVICE:
+        status = dev->devstatus;
+        buf[0] = 0x01;
+        buf[1] = 0x00;
+        break;
+        
+    case USB_RECIP_ENDPOINT:
+        if (ep_num > 4 || crq->wLength > 2) {
+            return 1;
+        }
+        
+        USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, ep_num);
+        if (ep_num == 0) {
+            status = USBC_Dev_IsEpStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
+        } else {
+            if (is_in) {
+                status = USBC_Dev_IsEpStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX);
+            } else {
+                status = USBC_Dev_IsEpStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
+            }
+        }
+        status = status ? 1 : 0;
+        if (status) {
+            buf[0] = 0x01;
+            buf[1] = 0x00;
+        } else {
+            buf[0] = 0x00;
+            buf[1] = 0x00;
+        }
+        break;
 
-		case USB_RECIP_ENDPOINT:
-			if (ep_num > 4 || crq->wLength > 2) {
-				return 1;
-			}
-
-			//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, ep_num);
-			writeb(ep_num, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-			if (ep_num == 0) {
-				//status = USBC_Dev_IsEpStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-				//__USBC_Dev_ep0_IsEpStall(usbc_otg->base_addr);
-				status = readw(g_sw_udc_io.usb_vbase + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_SENT_STALL);
-			} else {
-				if (is_in) {
-					//status = USBC_Dev_IsEpStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX);
-					//__USBC_Dev_Tx_IsEpStall(usbc_otg->base_addr);
-					status = readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR) & (1 << SUNXI_BP_TXCSR_D_SENT_STALL);
-				} else {
-					//status = USBC_Dev_IsEpStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-					//__USBC_Dev_Rx_IsEpStall(usbc_otg->base_addr);
-					status = readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR) & (1 << SUNXI_BP_RXCSR_D_SENT_STALL);
-				}
-			}
-			status = status ? 1 : 0;
-			if (status) {
-				buf[0] = 0x01;
-				buf[1] = 0x00;
-			} else {
-				buf[0] = 0x00;
-				buf[1] = 0x00;
-			}
-
-			break;
-
-		default:
-			return 1;
+    default:
+        return 1;
 	}
 
 	/* Seems to be needed to get it working. ouch :( */
 	udelay(5);
-	//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 0);
-	//__USBC_Dev_ReadDataHalf(usbc_otg->base_addr, ep_type);
-	//__USBC_Dev_ep0_ReadDataHalf(usbc_base_addr);
-	writew(1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY, g_sw_udc_io.usb_vbase + SUNXI_CSR0);
+	USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 0);
 
-	//fifo = USBC_SelectFIFO(g_sw_udc_io.usb_bsp_hdle, 0);
-	//USBC_REG_EPFIFOx(usbc_otg->base_addr, ep_index);
-	fifo = g_sw_udc_io.usb_vbase + SUNXI_EPFIFOx(0);
-
-	//USBC_WritePacket(g_sw_udc_io.usb_bsp_hdle, fifo, crq->wLength, buf);
-	buf32 = buf;
-
-	i32 = crq->wLength >> 2;
-	i8 = crq->wLength & 0x03;
-
-	while (i32--) {
-		writel(*buf32++, fifo);
-	}
-
-	buf8 = (__u8 *)buf32;
-	while (i8--) {
-		writeb(*buf8++, fifo);
-	}
-
-	//USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-	//__USBC_Dev_WriteDataComplete(usbc_otg->base_addr, ep_type);
-	//__USBC_Dev_ep0_WriteDataComplete(usbc_base_addr);
-	writew((1 << SUNXI_BP_CSR0_D_TX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
+	fifo = USBC_SelectFIFO(g_sw_udc_io.usb_vbase, 0);
+	USBC_WritePacket(g_sw_udc_io.usb_vbase, fifo, crq->wLength, buf);
+	USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
 
 	return 0;
 }
@@ -522,9 +1287,7 @@ static void sw_udc_handle_ep0_idle(struct sw_udc *dev,
 	int len = 0, ret = 0, tmp = 0;
 
 	/* start control request? */
-	//if (!USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0)) {
-	//__USBC_Dev_ep0_IsReadDataReady(usbc_otg->base_addr);
-	if (!(readw(g_sw_udc_io.usb_vbase + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_RX_PKT_READY))) {
+	if (!USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0)) {
 		debug("ERR: data is ready, can not read data.\n");
 		return;
 	}
@@ -537,13 +1300,8 @@ static void sw_udc_handle_ep0_idle(struct sw_udc *dev,
 				" wanted %d bytes got %d. Stalling out...\n",
 				sizeof(*crq), len);
 
-		//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 0);
-		//__USBC_Dev_ReadDataHalf(usbc_otg->base_addr, ep_type);
-		//__USBC_Dev_ep0_ReadDataHalf(usbc_base_addr);
-		writew(1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY, g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-		//USBC_Dev_EpSendStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-		//__USBC_Dev_ep0_SendStall(usbc_otg->base_addr);
-		setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SEND_STALL);
+		USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 0);
+		USBC_Dev_EpSendStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
 
 		return;
 	}
@@ -558,155 +1316,119 @@ static void sw_udc_handle_ep0_idle(struct sw_udc *dev,
 
 	if (dev->req_std) {   //standard request
 		switch (crq->bRequest) {
-			case USB_REQ_SET_CONFIGURATION:
-				debug("USB_REQ_SET_CONFIGURATION ... \n");
+		case USB_REQ_SET_CONFIGURATION:
+            debug("USB_REQ_SET_CONFIGURATION ... \n");
+            
+            if (crq->bRequestType == USB_RECIP_DEVICE) {
+                dev->req_config = 1;
+            }
+            break;
+            
+        case USB_REQ_SET_INTERFACE:
+            debug("USB_REQ_SET_INTERFACE ... \n");
+            
+            if (crq->bRequestType == USB_RECIP_INTERFACE) {
+                dev->req_config = 1;
+            }
+            break;
+            
+        case USB_REQ_SET_ADDRESS:
+            debug("USB_REQ_SET_ADDRESS ... \n");
+            
+            if (crq->bRequestType == USB_RECIP_DEVICE) {
+                tmp = crq->wValue & 0x7F;
+                dev->address = tmp;
+                
+                USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+                dev->ep0state = EP0_END_XFER;
+                crq_bRequest = USB_REQ_SET_ADDRESS;
+                
+                return;
+            }
+            break;
+            
+        case USB_REQ_GET_STATUS:
+            debug("USB_REQ_GET_STATUS ... \n");
+            
+            if (!sw_udc_get_status(dev, crq)) {
+                return;
+            }
+            break;
+            
+        case USB_REQ_CLEAR_FEATURE:
+            if (crq->bRequestType & (1 << 7)) {
+                printf("USB_REQ_CLEAR_FEATURE: data is not host to device\n");
+                break;
+            }
+            
+            USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+				
+            if (crq->bRequestType == USB_RECIP_DEVICE) {
+                /* wValue 0-1 */
+                if (crq->wValue) {
+                    dev->devstatus &= ~(1 << USB_DEVICE_REMOTE_WAKEUP);
+                } else {
+                    int k = 0;
+                    for (k = 0; k < SW_UDC_ENDPOINTS; k++) {
+                        sw_udc_set_halt(&dev->ep[k].ep, 0);
+                    }
+                }                
+            } else if(crq->bRequestType == USB_RECIP_INTERFACE) {
+            } else if(crq->bRequestType == USB_RECIP_ENDPOINT) {
+                /* wValue 0-1 */
+                if (crq->wValue) {
+                    dev->devstatus &= ~(1 << USB_DEVICE_REMOTE_WAKEUP);
+                } else {
+                    sw_udc_set_halt(&dev->ep[crq->wIndex & 0x7f].ep, 0);
+                }                
+            } else {
+                printf("PANIC : nonsupport set feature request. (%d)\n", crq->bRequestType);
+                USBC_Dev_EpSendStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
+            }
+            
+            dev->ep0state = EP0_IDLE;
+           
+            return;
+        case USB_REQ_SET_FEATURE:
+            if (crq->bRequestType & (1 << 7)) {
+                debug("USB_REQ_SET_FEATURE: data is not host to device\n");
+                break;
+            }
 
-				if (crq->bRequestType == USB_RECIP_DEVICE) {
-					dev->req_config = 1;
-				}
-				break;
+            if (crq->bRequestType == USB_RECIP_DEVICE) {
+                if ((crq->wValue == USB_DEVICE_TEST_MODE) && (crq->wIndex == 0x0400)) {
+                    USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+                    
+                    dev->ep0state = EP0_END_XFER;
+                    crq_bRequest = USB_REQ_SET_FEATURE;
+                    
+                    return;
+                }
 
-			case USB_REQ_SET_INTERFACE:
-				debug("USB_REQ_SET_INTERFACE ... \n");
-
-				if (crq->bRequestType == USB_RECIP_INTERFACE) {
-					dev->req_config = 1;
-				}
-				break;
-
-			case USB_REQ_SET_ADDRESS:
-				debug("USB_REQ_SET_ADDRESS ... \n");
-
-				if (crq->bRequestType == USB_RECIP_DEVICE) {
-					tmp = crq->wValue & 0x7F;
-					dev->address = tmp;
-					//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-					//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-					//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-					writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-
-					dev->ep0state = EP0_END_XFER;
-
-					crq_bRequest = USB_REQ_SET_ADDRESS;
-
-					return;
-				}
-				break;
-
-			case USB_REQ_GET_STATUS:
-				debug("USB_REQ_GET_STATUS ... \n");
-
-				if (!sw_udc_get_status(dev, crq)) {
-					return;
-				}
-				break;
-
-			case USB_REQ_CLEAR_FEATURE:
-				if (crq->bRequestType & (1 << 7)) {
-					printf("USB_REQ_CLEAR_FEATURE: data is not host to device\n");
-					break;
-				}
-
-				//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-				//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-				//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-				writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-
-				if (crq->bRequestType == USB_RECIP_DEVICE) {
-					/* wValue 0-1 */
-					if (crq->wValue) {
-						dev->devstatus &= ~(1 << USB_DEVICE_REMOTE_WAKEUP);
-					} else {
-						int k = 0;
-						for (k = 0; k < SW_UDC_ENDPOINTS; k++) {
-							sw_udc_set_halt(&dev->ep[k].ep, 0);
-						}
-					}
-
-				} else if(crq->bRequestType == USB_RECIP_INTERFACE) {
-				} else if(crq->bRequestType == USB_RECIP_ENDPOINT) {
-					/* wValue 0-1 */
-					if (crq->wValue) {
-						dev->devstatus &= ~(1 << USB_DEVICE_REMOTE_WAKEUP);
-					} else {
-						sw_udc_set_halt(&dev->ep[crq->wIndex & 0x7f].ep, 0);
-					}
-
-				} else {
-					printf("PANIC : nonsupport set feature request. (%d)\n", crq->bRequestType);
-					//USBC_Dev_EpSendStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-					//__USBC_Dev_ep0_SendStall(usbc_otg->base_addr);
-					setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SEND_STALL);
-				}
-
-				dev->ep0state = EP0_IDLE;
-
-				return;
-			case USB_REQ_SET_FEATURE:
-				if (crq->bRequestType & (1 << 7)) {
-					debug("USB_REQ_SET_FEATURE: data is not host to device\n");
-					break;
-				}
-
-				if (crq->bRequestType == USB_RECIP_DEVICE) {
-					if ((crq->wValue == USB_DEVICE_TEST_MODE) && (crq->wIndex == 0x0400)) {
-						//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-						//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-						//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-						writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-
-						dev->ep0state = EP0_END_XFER;
-						crq_bRequest = USB_REQ_SET_FEATURE;
-
-						return;
-					}
-
-					//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-					//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-					//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-					writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-
-					dev->devstatus |= (1 << USB_DEVICE_REMOTE_WAKEUP);
-				} else if (crq->bRequestType == USB_RECIP_INTERFACE) {
-					//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-					//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-					//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-					writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-				} else if (crq->bRequestType == USB_RECIP_ENDPOINT) {
-					//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-					//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-					//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-					writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-					sw_udc_set_halt(&dev->ep[crq->wIndex & 0x7f].ep, 1);
-				} else {
-					printf("PANIC : nonsupport set feature request. (%d)\n", crq->bRequestType);
-					//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-					//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-					//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-					writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-					//USBC_Dev_EpSendStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-					//__USBC_Dev_ep0_SendStall(usbc_otg->base_addr);
-					setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SEND_STALL);
-				}
-
-				dev->ep0state = EP0_IDLE;
-
-				return;
-
-			default:
-				//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 0);
-				//__USBC_Dev_ReadDataHalf(usbc_otg->base_addr, ep_type);
-				//__USBC_Dev_ep0_ReadDataHalf(usbc_base_addr);
-				writew(1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY, g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-
-				break;
-		}
-	} else {
-		//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 0);
-		//__USBC_Dev_ReadDataHalf(usbc_otg->base_addr, ep_type);
-		//__USBC_Dev_ep0_ReadDataHalf(usbc_base_addr);
-		writew(1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY, g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-
+				USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+                dev->devstatus |= (1 << USB_DEVICE_REMOTE_WAKEUP);
+                
+            } else if (crq->bRequestType == USB_RECIP_INTERFACE) {
+                USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+            } else if (crq->bRequestType == USB_RECIP_ENDPOINT) {
+                USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+                sw_udc_set_halt(&dev->ep[crq->wIndex & 0x7f].ep, 1);
+            } else {
+                printf("PANIC : nonsupport set feature request. (%d)\n", crq->bRequestType);
+                USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+                USBC_Dev_EpSendStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
+            }
+            
+            dev->ep0state = EP0_IDLE;
+            
+            return;
+            
+        default:
+            USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 0);
+            break;
+        }
+    } else {
+        USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 0);
 	}
 
 	if (crq->bRequestType & USB_DIR_IN) {
@@ -732,25 +1454,17 @@ static void sw_udc_handle_ep0_idle(struct sw_udc *dev,
 
 		udelay(5);
 
-		//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-		//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-		//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-		writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-		//USBC_Dev_EpSendStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-		//__USBC_Dev_ep0_SendStall(usbc_otg->base_addr);
-		setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SEND_STALL);
+		USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+		USBC_Dev_EpSendStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
 
 		dev->ep0state = EP0_IDLE;
 		/* deferred i/o == no response yet */
 	} else if (dev->req_pending) {
-		dev->req_pending=0;
+		dev->req_pending = 0;
 	}
 
 	if (crq->bRequest == USB_REQ_SET_CONFIGURATION || crq->bRequest == USB_REQ_SET_INTERFACE) {
-		//USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-		//__USBC_Dev_ReadDataComplete(usbc_otg->base_addr, ep_type);
-		//__USBC_Dev_ep0_ReadDataComplete(usbc_base_addr);
-		writew((1 << SUNXI_BP_CSR0_D_SERVICED_RX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
+		USBC_Dev_ReadDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
 	}
 
 	return;
@@ -775,35 +1489,25 @@ static void sw_udc_handle_ep0(struct sw_udc *dev)
 
 	/* We make the assumption that sw_udc_UDC_IN_CSR1_REG equal to
 	 * sw_udc_UDC_EP0_CSR_REG when index is zero */
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, 0);
-	writeb(0, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, 0);
 
 	/* clear stall status */
-	//if (USBC_Dev_IsEpStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0)) {
-	//__USBC_Dev_ep0_IsEpStall(usbc_otg->base_addr);
-	if (readw(g_sw_udc_io.usb_vbase + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_SENT_STALL)) {
+	if (USBC_Dev_IsEpStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0)) {
 		printf("ERR: ep0 stall\n");
 
 		sw_udc_nuke(dev, ep, -EPIPE);
-		//USBC_Dev_EpClearStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-		//__USBC_Dev_ep0_ClearStall(usbc_otg->base_addr);
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SEND_STALL));
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SENT_STALL));
+		USBC_Dev_EpClearStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
 		dev->ep0state = EP0_IDLE;
 
 		return;
 	}
 
 	/* clear setup end */
-	//if (USBC_Dev_Ctrl_IsSetupEnd(g_sw_udc_io.usb_bsp_hdle)) {
-	//__USBC_Dev_ep0_IsSetupEnd(usbc_otg->base_addr);
-	if (readw(g_sw_udc_io.usb_vbase + SUNXI_CSR0) && (1 << SUNXI_BP_CSR0_D_SETUP_END)) {
+	if (USBC_Dev_Ctrl_IsSetupEnd(g_sw_udc_io.usb_vbase)) {
 		debug("handle_ep0: ep0 setup end\n");
 
 		sw_udc_nuke(dev, ep, 0);
-		//USBC_Dev_Ctrl_ClearSetupEnd(g_sw_udc_io.usb_bsp_hdle);
-		//__USBC_Dev_ep0_ClearSetupEnd(usbc_otg->base_addr);
-		setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SERVICED_SETUP_END));
+		USBC_Dev_Ctrl_ClearSetupEnd(g_sw_udc_io.usb_vbase);
 		dev->ep0state = EP0_IDLE;
 	}
 
@@ -812,96 +1516,62 @@ static void sw_udc_handle_ep0(struct sw_udc *dev)
 	ep0csr = readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
 
 	switch (dev->ep0state) {
-		case EP0_IDLE:
-			sw_udc_handle_ep0_idle(dev, ep, &crq, ep0csr);
-			break;
+    case EP0_IDLE:
+        sw_udc_handle_ep0_idle(dev, ep, &crq, ep0csr);
+        break;
+        
+    case EP0_IN_DATA_PHASE:                 /* GET_DESCRIPTOR etc */
+        debug("EP0_IN_DATA_PHASE ... what now?\n");
+        
+        if (!USBC_Dev_IsWriteDataReady(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0) && req) {
+            sw_udc_write_fifo(ep, req);
+        }
+        break;
+        
+    case EP0_OUT_DATA_PHASE:                /* SET_DESCRIPTOR etc */
+        debug("EP0_OUT_DATA_PHASE ... what now?\n");
+        
+        if (USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0) && req ) {
+            sw_udc_read_fifo(ep,req);
+        }
+        break;
 
-		case EP0_IN_DATA_PHASE:                 /* GET_DESCRIPTOR etc */
-			debug("EP0_IN_DATA_PHASE ... what now?\n");
+    case EP0_END_XFER:
+        debug("EP0_END_XFER ... what now?\n");
+        debug("crq_bRequest = 0x%x\n", crq_bRequest);
+        switch (crq_bRequest) {
+        case USB_REQ_SET_ADDRESS:
+            USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, 0);
+            
+            USBC_Dev_Ctrl_ClearSetupEnd(g_sw_udc_io.usb_vbase);
+            USBC_Dev_SetAddress(g_sw_udc_io.usb_vbase, dev->address);
+            
+            debug("Set address %d\n", dev->address);
+            break;
+            
+        case USB_REQ_SET_FEATURE:
+            {
+                u32 fifo = 0;
 
-			//if (!USBC_Dev_IsWriteDataReady(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0) && req) {
-			//__USBC_Dev_ep0_IsWriteDataReady(usbc_otg->base_addr);
-			if (!(readw(g_sw_udc_io.usb_vbase + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_TX_PKT_READY)) && req) {
-				sw_udc_write_fifo(ep, req);
-			}
-			break;
+                fifo = USBC_SelectFIFO(g_sw_udc_io.usb_vbase, 0);
+                USBC_WritePacket(g_sw_udc_io.usb_vbase, fifo, 54, (u32 *)TestPkt);
+                USBC_EnterMode_TestPacket(g_sw_udc_io.usb_vbase);
+                USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0, 1);
+            }
+            break;
+        default:
+            break;
+        }
 
-		case EP0_OUT_DATA_PHASE:                /* SET_DESCRIPTOR etc */
-			debug("EP0_OUT_DATA_PHASE ... what now?\n");
-
-			//if (USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0) && req ) {
-			//__USBC_Dev_ep0_IsReadDataReady(usbc_otg->base_addr);
-			if ((readw(g_sw_udc_io.usb_vbase + SUNXI_CSR0) & (1 << SUNXI_BP_CSR0_D_RX_PKT_READY)) && req) {
-				sw_udc_read_fifo(ep,req);
-			}
-			break;
-		case EP0_END_XFER:
-			debug("EP0_END_XFER ... what now?\n");
-			debug("crq_bRequest = 0x%x\n", crq_bRequest);
-
-			switch (crq_bRequest){
-				case USB_REQ_SET_ADDRESS:
-					//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, 0);
-					writeb(0, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-
-					//USBC_Dev_Ctrl_ClearSetupEnd(g_sw_udc_io.usb_bsp_hdle);
-					//__USBC_Dev_ep0_ClearSetupEnd(usbc_otg->base_addr);
-					setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, (1 << SUNXI_BP_CSR0_D_SERVICED_SETUP_END));
-					//USBC_Dev_SetAddress(g_sw_udc_io.usb_bsp_hdle, dev->address);
-					writeb(dev->address, g_sw_udc_io.usb_vbase + SUNXI_FADDR);
-
-					debug("Set address %d\n", dev->address);
-					break;
-
-				case USB_REQ_SET_FEATURE:
-					{
-						u32 fifo = 0;
-						__u32 i32 = 0;
-						__u32 i8  = 0;
-						__u8  *buf8  = NULL;
-						__u32 *buf32 = NULL;
-
-						//fifo = USBC_SelectFIFO(g_sw_udc_io.usb_bsp_hdle, 0);
-						//USBC_REG_EPFIFOx(usbc_otg->base_addr, ep_index);
-						fifo = g_sw_udc_io.usb_vbase + SUNXI_EPFIFOx(0);
-
-						//USBC_WritePacket(g_sw_udc_io.usb_bsp_hdle, fifo, 54, (u32 *)TestPkt);
-						buf32 = (u32 *) TestPkt;
-
-						i32 = 54 >> 2;
-						i8 = 54 & 0x03;
-
-						while (i32--) {
-							writel(*buf32++, fifo);
-						}
-
-						buf8 = (__u8 *)buf32;
-						while (i8--) {
-							writeb(*buf8++, fifo);
-						}
-
-						//USBC_EnterMode_TestPacket(g_sw_udc_io.usb_bsp_hdle);
-						setbits_8(g_sw_udc_io.usb_vbase + SUNXI_TMCTL, 1 << SUNXI_BP_TMCTL_TEST_PACKET);
-						//USBC_Dev_WriteDataStatus(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0, 1);
-						//__USBC_Dev_WriteDataComplete(usbc_otg->base_addr, ep_type);
-						//__USBC_Dev_ep0_WriteDataComplete(usbc_base_addr);
-						writew((1 << SUNXI_BP_CSR0_D_TX_PKT_READY) | (1 << SUNXI_BP_CSR0_D_DATA_END), g_sw_udc_io.usb_vbase + SUNXI_CSR0);
-					}
-					break;
-
-				default:
-					break;
-			}
-
-			crq_bRequest = 0;
-
-			dev->ep0state = EP0_IDLE;
-			break;
-
-		case EP0_STALL:
-			debug("EP0_STALL ... what now?\n");
-			dev->ep0state = EP0_IDLE;
-			break;
+        crq_bRequest = 0;
+        
+        dev->ep0state = EP0_IDLE;
+        break;
+        
+    case EP0_STALL:
+        debug("EP0_STALL ... what now?\n");
+        dev->ep0state = EP0_IDLE;
+        break;
 	}
 
 	debug("sw_udc_handle_ep0--4--%d\n", dev->ep0state);
@@ -916,41 +1586,26 @@ static void sw_udc_handle_ep(struct sw_udc_ep *ep)
 	u32 idx = 0;
 	u8 old_ep_index = 0;
 	u32 is_done = 0;
-	__u32 reg_val;
 
 	idx = ep->bEndpointAddress & 0x7F;
 
-	//old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_index = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, idx);
-	writeb(idx, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, idx);
 
 	if (is_in) {
-		//if (USBC_Dev_IsEpStall(g_sw_udc_io.usb_bsp_hdle,
-		//			USBC_EP_TYPE_TX)) {
-		//__USBC_Dev_Tx_IsEpStall(usbc_otg->base_addr);
-		if (readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR) & (1 << SUNXI_BP_TXCSR_D_SENT_STALL)) {
-			printf("ERR: tx ep(%d) is stall\n", idx);
-			//USBC_Dev_EpClearStall(g_sw_udc_io.usb_bsp_hdle,
-			//		USBC_EP_TYPE_TX);
-			//__USBC_Dev_Tx_ClearStall(usbc_otg->base_addr);
-			reg_val = readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-			reg_val &= ~((1 << SUNXI_BP_TXCSR_D_SENT_STALL) | (1 << SUNXI_BP_TXCSR_D_SEND_STALL));
-			writew(reg_val, g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-			goto end;
+        if (USBC_Dev_IsEpStall(g_sw_udc_io.usb_vbase,
+                    SUNXI_EP_TYPE_TX)) {
+            printf("ERR: tx ep(%d) is stall\n", idx);
+            USBC_Dev_EpClearStall(g_sw_udc_io.usb_vbase,
+                    SUNXI_EP_TYPE_TX);
+            goto end;
 		}
 	} else {
-		//if (USBC_Dev_IsEpStall(g_sw_udc_io.usb_bsp_hdle,
-		//			USBC_EP_TYPE_RX)) {
-		//__USBC_Dev_Rx_IsEpStall(usbc_otg->base_addr);
-		if (readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR) & (1 << SUNXI_BP_RXCSR_D_SENT_STALL)) {
+		if (USBC_Dev_IsEpStall(g_sw_udc_io.usb_vbase,
+					SUNXI_EP_TYPE_RX)) {
 			printf("ERR: rx ep(%d) is stall\n", idx);
-			//USBC_Dev_EpClearStall(g_sw_udc_io.usb_bsp_hdle,
-			//		USBC_EP_TYPE_RX);
-			//__USBC_Dev_Rx_ClearStall(usbc_otg->base_addr);
-			reg_val = readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-			reg_val &= ~((1 << SUNXI_BP_RXCSR_D_SENT_STALL) | (1 << SUNXI_BP_RXCSR_D_SEND_STALL));
-			writew(reg_val, g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
+			USBC_Dev_EpClearStall(g_sw_udc_io.usb_vbase,
+					SUNXI_EP_TYPE_RX);
 			goto end;
 		}
 	}
@@ -972,21 +1627,15 @@ static void sw_udc_handle_ep(struct sw_udc_ep *ep)
 				is_done = 1;
 				goto next;
 			} else {
-				//if (!USBC_Dev_IsWriteDataReady(
-				//			g_sw_udc_io.usb_bsp_hdle,
-				//			USBC_EP_TYPE_TX))
-				//__USBC_Dev_Tx_IsWriteDataReady(usbc_otg->base_addr);
-				reg_val = readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-				reg_val &= (1 << SUNXI_BP_TXCSR_D_TX_READY) | (1 << SUNXI_BP_TXCSR_D_FIFO_NOT_EMPTY);
-				if (!reg_val)
-					sw_udc_write_fifo(ep, req);
+                if (!USBC_Dev_IsWriteDataReady(
+                            g_sw_udc_io.usb_vbase,
+                            SUNXI_EP_TYPE_TX))
+                    sw_udc_write_fifo(ep, req);
 			}
 		} else {
-			//if (USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_bsp_hdle,
-			//			USBC_EP_TYPE_RX))
-			//__USBC_Dev_Rx_IsReadDataReady(usbc_otg->base_addr);
-			if (readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR) & (1 << SUNXI_BP_RXCSR_D_RX_PKT_READY))
-				is_done = sw_udc_read_fifo(ep, req);
+            if (USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_vbase,
+                        SUNXI_EP_TYPE_RX))
+                is_done = sw_udc_read_fifo(ep, req);
 		}
 	}
 
@@ -1003,30 +1652,22 @@ next:
 
 			/*DMSG_INFO("n: (0x%p, %d, %d)\n", &(req->req),
 			 req->req.length, req->req.actual);*/
-			//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, idx);
-			writeb(idx, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
 
-			//if (is_in && !USBC_Dev_IsWriteDataReady(
-			//			g_sw_udc_io.usb_bsp_hdle,
-			//			USBC_EP_TYPE_TX))
-			//_USBC_Dev_Tx_IsWriteDataReady(usbc_otg->base_addr);
-			reg_val = readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-			reg_val &= (1 << SUNXI_BP_TXCSR_D_TX_READY) | (1 << SUNXI_BP_TXCSR_D_FIFO_NOT_EMPTY);
-			if (is_in && !reg_val)
-				sw_udc_write_fifo(ep, req);
-			//else if (!is_in && USBC_Dev_IsReadDataReady(
-			//			g_sw_udc_io.usb_bsp_hdle,
-			//			USBC_EP_TYPE_RX))
-			//__USBC_Dev_Rx_IsReadDataReady(usbc_otg->base_addr);
-			else if (!is_in && (readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR) & (1 << SUNXI_BP_RXCSR_D_RX_PKT_READY)))
-				sw_udc_read_fifo(ep, req);
+			USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, idx);
 
+            if (is_in && !USBC_Dev_IsWriteDataReady(
+                        g_sw_udc_io.usb_vbase,
+                        SUNXI_EP_TYPE_TX))
+                sw_udc_write_fifo(ep, req);
+            else if (!is_in && USBC_Dev_IsReadDataReady(
+                        g_sw_udc_io.usb_vbase,
+                        SUNXI_EP_TYPE_RX))
+                sw_udc_read_fifo(ep, req);
 		}
 	}
 
 end:
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);
-	writeb(old_ep_index, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_index);
 
 	return;
 }
@@ -1036,28 +1677,19 @@ static u32 filtrate_irq_misc(u32 irq_misc)
 	u32 irq = irq_misc;
 
 	irq &= ~(SUNXI_INTUSB_VBUS_ERROR | SUNXI_INTUSB_SESSION_REQ | SUNXI_INTUSB_CONNECT | SUNXI_INTUSB_SOF);
-	//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_VBUS_ERROR);
-	writeb(SUNXI_INTUSB_VBUS_ERROR, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
-	//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_SESSION_REQ);
-	writeb(SUNXI_INTUSB_SESSION_REQ, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
-	//USBC_INT_ClearMiscPending(udc.bsp, USBC_INTUSB_CONNECT);
-	writeb(SUNXI_INTUSB_CONNECT, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
-	//USBC_INT_ClearMiscPending(g_sw_udc_io.usb_bsp_hdle, USBC_INTUSB_SOF);
-	writeb(SUNXI_INTUSB_SOF, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
+	USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_VBUS_ERROR);
+	USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_SESSION_REQ);
+	USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_CONNECT);
+	USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_SOF);
 
 	return irq;
 }
 
 static void clear_all_irq(void)
 {
-	//USBC_INT_ClearEpPendingAll(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX);
-	//__USBC_INT_ClearTxPendingAll(usbc_otg->base_addr);
-	writew(0xffff, g_sw_udc_io.usb_vbase + SUNXI_INTTx);
-	//USBC_INT_ClearEpPendingAll(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-	//__USBC_INT_ClearRxPendingAll(usbc_otg->base_addr);
-	writew(0xffff, g_sw_udc_io.usb_vbase + SUNXI_INTRx);
-	//USBC_INT_ClearMiscPendingAll(g_sw_udc_io.usb_bsp_hdle);
-	writeb(0xff, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
+	USBC_INT_ClearEpPendingAll(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX);
+	USBC_INT_ClearEpPendingAll(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
+	USBC_INT_ClearMiscPendingAll(g_sw_udc_io.usb_vbase);
 }
 
 static void throw_away_all_urb(struct sw_udc *dev)
@@ -1095,16 +1727,12 @@ static int sw_udc_irq(int dummy, void *_dev)
 	}
 
 	/* Save index */
-	//old_ep_idx = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_idx = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_idx = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
 
 	/* Read status registers */
-	//usb_irq = USBC_INT_MiscPending(g_sw_udc_io.usb_bsp_hdle);
-	usb_irq = readb(g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
-	//tx_irq  = USBC_INT_EpPending(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX);
-	tx_irq = readw(g_sw_udc_io.usb_vbase + SUNXI_INTTx);
-	//rx_irq  = USBC_INT_EpPending(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-	rx_irq = readw(g_sw_udc_io.usb_vbase + SUNXI_INTRx);
+	usb_irq = USBC_INT_MiscPending(g_sw_udc_io.usb_vbase);
+	tx_irq  = USBC_INT_EpPending(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX);
+	rx_irq  = USBC_INT_EpPending(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
 
 	debug("\n\nirq: usb_irq=%02x, tx_irq=%02x, rx_irq=%02x\n",
 			usb_irq, tx_irq, rx_irq);
@@ -1121,16 +1749,13 @@ static int sw_udc_irq(int dummy, void *_dev)
 	if (usb_irq & SUNXI_INTUSB_RESET) {
 		debug("IRQ: reset\n");
 
-		//USBC_INT_ClearMiscPending(g_sw_udc_io.usb_bsp_hdle, USBC_INTUSB_RESET);
-		writeb(SUNXI_INTUSB_RESET, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
+		USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_RESET);
 		clear_all_irq();
 
 		usb_connect = 1;
 
-		//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, 0);
-		writeb(0, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-		//USBC_Dev_SetAddress_default(g_sw_udc_io.usb_bsp_hdle);
-		writeb(0x00, g_sw_udc_io.usb_vbase + SUNXI_FADDR);
+		USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, 0);
+		USBC_Dev_SetAddress_default(g_sw_udc_io.usb_vbase);
 
 		throw_away_all_urb(dev);
 		dev->address = 0;
@@ -1145,8 +1770,7 @@ static int sw_udc_irq(int dummy, void *_dev)
 		debug("IRQ: resume\n");
 
 		/* clear interrupt */
-		//USBC_INT_ClearMiscPending(g_sw_udc_io.usb_bsp_hdle, USBC_INTUSB_RESUME);
-		writeb(SUNXI_INTUSB_RESUME, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
+		USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_RESUME);
 
 		if (dev->gadget.speed != USB_SPEED_UNKNOWN
 				&& dev->driver
@@ -1162,8 +1786,7 @@ static int sw_udc_irq(int dummy, void *_dev)
 		debug("IRQ: suspend\n");
 
 		/* clear interrupt */
-		//USBC_INT_ClearMiscPending(g_sw_udc_io.usb_bsp_hdle, USBC_INTUSB_SUSPEND);
-		writeb(SUNXI_INTUSB_SUSPEND, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
+		USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_SUSPEND);
 
 		if (dev->gadget.speed != USB_SPEED_UNKNOWN) {
 			usb_connect = 0;
@@ -1186,8 +1809,7 @@ static int sw_udc_irq(int dummy, void *_dev)
 	if (usb_irq & SUNXI_INTUSB_DISCONNECT) {
 		debug("IRQ: disconnect\n");
 
-		//USBC_INT_ClearMiscPending(g_sw_udc_io.usb_bsp_hdle, USBC_INTUSB_DISCONNECT);
-		writeb(SUNXI_INTUSB_DISCONNECT, g_sw_udc_io.usb_vbase + SUNXI_INTUSB);
+		USBC_INT_ClearMiscPending(g_sw_udc_io.usb_vbase, SUNXI_INTUSB_DISCONNECT);
 
 		dev->ep0state = EP0_IDLE;
 
@@ -1202,13 +1824,10 @@ static int sw_udc_irq(int dummy, void *_dev)
 		debug("USB ep0 irq\n");
 
 		/* Clear the interrupt bit by setting it to 1 */
-		//USBC_INT_ClearEpPending(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX, 0);
-		//__USBC_INT_ClearTxPending(usbc_otg->base_addr, ep_index);
-		writew(1, g_sw_udc_io.usb_vbase + SUNXI_INTTx);
+		USBC_INT_ClearEpPending(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX, 0);
 
 		if (dev->gadget.speed == USB_SPEED_UNKNOWN) {
-			//if (USBC_Dev_QueryTransferMode(g_sw_udc_io.usb_bsp_hdle) == USBC_TS_MODE_HS) {
-			if (readb(g_sw_udc_io.usb_vbase + SUNXI_PCTL) & (1 << SUNXI_BP_POWER_D_HIGH_SPEED_FLAG)) {
+			if (USBC_Dev_QueryTransferMode(g_sw_udc_io.usb_vbase) == SUNXI_TS_MODE_HS) {
 				dev->gadget.speed = USB_SPEED_HIGH;
 
 				debug("\n+++++++++++++++++++++++++++++++++++++\n");
@@ -1234,10 +1853,8 @@ static int sw_udc_irq(int dummy, void *_dev)
 			debug("USB rx ep%d irq\n", i);
 
 			/* Clear the interrupt bit by setting it to 1 */
-			//USBC_INT_ClearEpPending(g_sw_udc_io.usb_bsp_hdle,
-			//		USBC_EP_TYPE_RX, i);
-			//__USBC_INT_ClearRxPending(usbc_otg->base_addr, ep_index);
-			writew((1 << i), g_sw_udc_io.usb_vbase + SUNXI_INTRx);
+			USBC_INT_ClearEpPending(g_sw_udc_io.usb_vbase,
+					SUNXI_EP_TYPE_RX, i);
 
 			sw_udc_handle_ep(&dev->ep[i]);
 		}
@@ -1251,10 +1868,8 @@ static int sw_udc_irq(int dummy, void *_dev)
 			debug("USB tx ep%d irq\n", i);
 
 			/* Clear the interrupt bit by setting it to 1 */
-			//USBC_INT_ClearEpPending(g_sw_udc_io.usb_bsp_hdle,
-			//		USBC_EP_TYPE_TX, i);
-			//__USBC_INT_ClearTxPending(usbc_otg->base_addr, ip_index);
-			writew((1 << i), g_sw_udc_io.usb_vbase + SUNXI_INTTx);
+			USBC_INT_ClearEpPending(g_sw_udc_io.usb_vbase,
+					SUNXI_EP_TYPE_TX, i);
 
 			sw_udc_handle_ep(&dev->ep[i]);
 		}
@@ -1263,8 +1878,7 @@ static int sw_udc_irq(int dummy, void *_dev)
 	debug("irq: %d irq end.\n", dev->irq_no);
 
 	/* Restore old index */
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_idx);
-	writeb(old_ep_idx, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_idx);
 
 	spin_unlock_irqrestore(&dev->lock, flags);
 
@@ -1295,7 +1909,6 @@ static int sw_udc_ep_enable(struct usb_ep *_ep,
 	unsigned long flags = 0;
 	u32 old_ep_index = 0;
 	__u32 fifo_addr = 0;
-	u32 reg;
 
 	if (_ep == NULL || desc == NULL) {
 		printf("ERR: invalid argment\n");
@@ -1344,83 +1957,23 @@ static int sw_udc_ep_enable(struct usb_ep *_ep,
 		goto end;
 	}
 
-	//old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_index = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, ep->num);
-	writeb(ep->num, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, ep->num);
 
 	if ((ep->bEndpointAddress) & USB_DIR_IN)
 	{ /* tx */
-		//USBC_Dev_ConfigEp(g_sw_udc_io.usb_bsp_hdle, USBC_TS_TYPE_BULK, USBC_EP_TYPE_TX, SW_UDC_FIFO_NUM, _ep->maxpacket & 0x7ff);
-		// __USBC_Dev_Tx_ConfigEp(usbc_otg->base_addr, ts_type, is_double_fifo,  ep_MaxPkt)
-		// --<1>--config tx csr
-		reg = (1 << SUNXI_BP_TXCSR_D_MODE);
-		reg |= (1 << SUNXI_BP_TXCSR_D_CLEAR_DATA_TOGGLE);
-		reg |= (1 << SUNXI_BP_TXCSR_D_FLUSH_FIFO);
-		writew(reg, g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-		writew(reg, g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-		// --<2>--config tx ep max packet
-		reg = readw(g_sw_udc_io.usb_vbase + SUNXI_TXMAXP);
-		reg |= (_ep->maxpacket & 0x7ff) & ((1 << SUNXI_BP_TXMAXP_PACKET_COUNT) - 1);
-		writew(reg, g_sw_udc_io.usb_vbase + SUNXI_TXMAXP);
-		// --<3>--config ep transfer type
-		// __USBC_Dev_Tx_EnableBulkEp(usbc_base_addr);
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_TXCSR, 1 << SUNXI_BP_TXCSR_D_ISO);
-		//USBC_ConfigFifo(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX, SW_UDC_FIFO_NUM, _ep->maxpacket, fifo_addr);
-		// __USBC_ConfigFifo_TxEp(usbc_otg->base_addr, is_double_fifo, fifo_size, fifo_addr);
-		u32 temp = 0;
-		u32 size = 0;
-		temp = _ep->maxpacket + 511;
-		temp &= ~511;
-		temp >>= 3;
-		temp >>= 1;
-		while (temp) {
-			size++;
-			temp >>= 1;
-		}
-		writew(fifo_addr >> 3, g_sw_udc_io.usb_vbase + SUNXI_TXFIFOAD);
-		writeb(size & 0x0f, g_sw_udc_io.usb_vbase + SUNXI_TXFIFOSZ);
-		setbits_8(g_sw_udc_io.usb_vbase + SUNXI_TXFIFOSZ, 1 << SUNXI_BP_TXFIFOSZ_DPB);
-		//USBC_INT_EnableEp(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX, ep->num);
-		// __USBC_INT_EnableTxEp(usbc_otg->base_addr, ep_index);
-		setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_INTTxE, 1 << ep->num);
+		USBC_Dev_ConfigEp(g_sw_udc_io.usb_vbase, SUNXI_TS_TYPE_BULK, SUNXI_EP_TYPE_TX, SW_UDC_FIFO_NUM, _ep->maxpacket & 0x7ff);
+		USBC_ConfigFifo(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX, SW_UDC_FIFO_NUM, _ep->maxpacket, fifo_addr);
+		USBC_INT_EnableEp(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX, ep->num);
 	} 
 	else
 	{ /* rx */
-		//USBC_Dev_ConfigEp(g_sw_udc_io.usb_bsp_hdle, USBC_TS_TYPE_BULK, USBC_EP_TYPE_RX, SW_UDC_FIFO_NUM, _ep->maxpacket & 0x7ff);
-		// __USBC_Dev_Rx_ConfigEp(usbc_otg->base_addr, ts_type, is_double_fifo, ep_MaxPkt);
-		// --<1>--config tx csr
-		reg = (1 << SUNXI_BP_RXCSR_D_CLEAR_DATA_TOGGLE) | (1 << SUNXI_BP_RXCSR_D_FLUSH_FIFO);
-		writew(reg, g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-		writew(reg, g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-		// --<2>--config tx ep max packet
-		reg = readw(g_sw_udc_io.usb_vbase + SUNXI_RXMAXP);
-		reg |= (_ep->maxpacket & 0x7ff) & ((1 << SUNXI_BP_RXMAXP_PACKET_COUNT) - 1);
-		writew(reg, g_sw_udc_io.usb_vbase + SUNXI_RXMAXP);
-		// __USBC_Dev_Rx_EnableBulkEp(usbc_base_addr);
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_RXCSR, 1 << SUNXI_BP_RXCSR_D_ISO);
-		//USBC_ConfigFifo(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX, SW_UDC_FIFO_NUM, 512, fifo_addr);
-		//__USBC_ConfigFifo_RxEp(usbc_otg->base_addr, is_double_fifo, fifo_size, fifo_addr);
-		u32 temp = 0;
-		u32 size = 0;
-		temp = 512 + 511;
-		temp &= ~511;
-		temp >>= 3;
-		temp >>= 1;
-		while (temp) {
-			size++;
-			temp >>= 1;
-		}
-		writew(fifo_addr >> 3, g_sw_udc_io.usb_vbase + SUNXI_RXFIFOAD);
-		writeb(size & 0x0f, g_sw_udc_io.usb_vbase + SUNXI_RXFIFOSZ);
-		setbits_8(g_sw_udc_io.usb_vbase + SUNXI_RXFIFOSZ, 1 << SUNXI_BP_RXFIFOSZ_DPB);
-		//USBC_INT_EnableEp(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX, ep->num);
-		// __USBC_INT_EnableRxEp(usbc_otg->base_addr, ep_index);
-		setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_INTRxE, 1 << ep->num);
+		USBC_Dev_ConfigEp(g_sw_udc_io.usb_vbase, SUNXI_TS_TYPE_BULK, SUNXI_EP_TYPE_RX, SW_UDC_FIFO_NUM, _ep->maxpacket & 0x7ff);
+		USBC_ConfigFifo(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX, SW_UDC_FIFO_NUM, 512, fifo_addr);
+		USBC_INT_EnableEp(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX, ep->num);
 	}
 
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);
-	writeb(old_ep_index, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_index);
 
 end:
 	spin_unlock_irqrestore(&ep->dev->lock, flags);
@@ -1470,38 +2023,21 @@ static int sw_udc_ep_disable(struct usb_ep *_ep)
 		goto end;
 	}
 
-	//old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_index = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, ep->num);
-	writeb(ep->num, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, ep->num);
 
 	if ((ep->bEndpointAddress) & USB_DIR_IN)
 	{ /* tx */
-		//USBC_Dev_ConfigEp_Default(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX);
-		//__USBC_Dev_Tx_ConfigEp_Default(usbc_otg->base_addr);
-		//--<1>--clear tx csr
-		writew(0x00, g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-		//--<2>--clear tx ep max packet
-		writew(0x00, g_sw_udc_io.usb_vbase + SUNXI_TXMAXP);
-		//USBC_INT_DisableEp(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX, ep->num);
-		//__USBC_INT_DisableTxEp(usbc_otg->base_addr, ep_index);
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_INTTxE, 1 < ep->num);
+		USBC_Dev_ConfigEp_Default(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX);
+		USBC_INT_DisableEp(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX, ep->num);
 	}
 	else
 	{ /* rx */
-		//USBC_Dev_ConfigEp_Default(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-		//__USBC_Dev_Rx_ConfigEp_Default(usbc_otg->base_addr);
-		//--<1>--clear tx csr
-		writew(0x00, g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
-		//--<2>--clear tx ep max packet
-		writew(0x00, g_sw_udc_io.usb_vbase + SUNXI_RXMAXP);
-		//USBC_INT_DisableEp(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX, ep->num);
-		//__USBC_INT_DisableRxEp(usbc_otg->base_addr, ep_index);
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_INTRxE, 1 < ep->num);
+		USBC_Dev_ConfigEp_Default(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
+		USBC_INT_DisableEp(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX, ep->num);
 	}
 
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);
-	writeb(old_ep_index, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_index);
 
 end:
 	spin_unlock_irqrestore(&ep->dev->lock, flags);
@@ -1520,7 +2056,7 @@ static struct usb_request * sw_udc_alloc_request(struct usb_ep *_ep, gfp_t mem_f
 		return NULL;
 	}
 
-	req = kzalloc (sizeof(struct sw_udc_request), mem_flags);
+	req = memalign(CONFIG_SYS_CACHELINE_SIZE, sizeof(struct sw_udc_request));
 	if (!req) {
 		printf("ERR: kzalloc failed\n");
 		return NULL;
@@ -1612,50 +2148,44 @@ static int sw_udc_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_
 			ep, ep->num,
 			req, _req, _req->length, _req->actual);
 
-	//old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_index = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
 	if (ep->bEndpointAddress) {
-		//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, ep->bEndpointAddress & 0x7F);
-		writeb(ep->bEndpointAddress & 0x7F, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+		USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, ep->bEndpointAddress & 0x7F);
 	} else {
-		//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, 0);
-		writeb(0, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+		USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, 0);
 	}
 
 	if (!ep->halted && (&req->queue == ep->queue.next)) {
 		if (ep->bEndpointAddress == 0 /* ep0 */) {
 			switch (dev->ep0state) {
-				case EP0_IN_DATA_PHASE:
-					//if (!USBC_Dev_IsWriteDataReady(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX))
-					if (!(readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR) & ((1 << SUNXI_BP_TXCSR_D_TX_READY) | (1 << SUNXI_BP_TXCSR_D_FIFO_NOT_EMPTY))) && sw_udc_write_fifo(ep, req)) {
-						dev->ep0state = EP0_IDLE;
-						req = NULL;
-					}
-					break;
-
-				case EP0_OUT_DATA_PHASE:
-//							|| (USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX) 
-					if ((!_req->length)
-							|| ((readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR) & (1 << SUNXI_BP_RXCSR_D_RX_PKT_READY))
-							&& sw_udc_read_fifo(ep, req))) {
-						dev->ep0state = EP0_IDLE;
-						req = NULL;
-					}
-					break;
-
-				default:
-					spin_unlock_irqrestore(&ep->dev->lock, flags);
-					return -EL2HLT;
-			}
+            case EP0_IN_DATA_PHASE:
+                if (!USBC_Dev_IsWriteDataReady(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX)
+                        && sw_udc_write_fifo(ep, req)) { 
+                    dev->ep0state = EP0_IDLE;
+                    req = NULL;
+                }
+                break;
+                
+            case EP0_OUT_DATA_PHASE:
+                if ((!_req->length)
+                        || (USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX)
+                            && sw_udc_read_fifo(ep, req))) {
+                    dev->ep0state = EP0_IDLE;
+                    req = NULL;
+                }
+                break;
+                
+            default:
+                spin_unlock_irqrestore(&ep->dev->lock, flags);
+                return -EL2HLT;
+            }
 		} else if ((ep->bEndpointAddress & USB_DIR_IN) != 0
-				//&& !USBC_Dev_IsWriteDataReady(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX)) {
-				&& !(readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR) & ((1 << SUNXI_BP_TXCSR_D_TX_READY) | (1 << SUNXI_BP_TXCSR_D_FIFO_NOT_EMPTY)))) {
+				&& !USBC_Dev_IsWriteDataReady(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX)) {
 			if (sw_udc_write_fifo(ep, req)) {
 				req = NULL;
 			}
 		} else if ((ep->bEndpointAddress & USB_DIR_IN) == 0
-				//&& USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX)) {
-				&& ((readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR) & (1 << SUNXI_BP_RXCSR_D_RX_PKT_READY)))) {
+				&& USBC_Dev_IsReadDataReady(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX)) {
 			if (sw_udc_read_fifo(ep, req)) {
 				req = NULL;
 			}
@@ -1663,8 +2193,7 @@ static int sw_udc_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_
 
 	}
 
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);
-	writeb(old_ep_index, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_index);
 end:
 
 	spin_unlock_irqrestore(&ep->dev->lock, flags);
@@ -1736,8 +2265,7 @@ static int sw_udc_set_halt(struct usb_ep *_ep, int value)
 	struct sw_udc_ep *ep = NULL;
 	unsigned long flags = 0;
 	u32 idx = 0;
-	__u8 old_ep_index = 0;
-	u32 reg;
+	u8 old_ep_index = 0;
 
 	if (_ep == NULL) {
 		printf("ERR: invalid argment\n");
@@ -1764,48 +2292,30 @@ static int sw_udc_set_halt(struct usb_ep *_ep, int value)
 
 	idx = ep->bEndpointAddress & 0x7F;
 
-	//old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
-	old_ep_index = readb(g_sw_udc_io.usb_vbase + SUNXI_EPIND);
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, idx);
-	writeb(idx, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_vbase);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, idx);
 
 	if (idx == 0) {
-		//USBC_Dev_EpClearStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_EP0);
-		//__USBC_Dev_ep0_ClearStall(usbc_otg->base_addr);
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SEND_STALL);
-		clrbits_le16(g_sw_udc_io.usb_vbase + SUNXI_CSR0, 1 << SUNXI_BP_CSR0_D_SENT_STALL);
+		USBC_Dev_EpClearStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_EP0);
 	} else {
 		if ((ep->bEndpointAddress & USB_DIR_IN) != 0) {
 			if (value) {
-				//USBC_Dev_EpSendStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX);
-				//__USBC_Dev_Tx_SendStall(usbc_otg->base_addr);
-				setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_TXCSR, (1 << SUNXI_BP_TXCSR_D_SEND_STALL));
+				USBC_Dev_EpSendStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX);
 			} else {
-				//USBC_Dev_EpClearStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX);
-				//__USBC_Dev_Tx_ClearStall(usbc_otg->base_addr);
-				reg = readw(g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
-				reg &= ~((1 << SUNXI_BP_TXCSR_D_SENT_STALL) | (1 << SUNXI_BP_TXCSR_D_SEND_STALL));
-				writew(reg, g_sw_udc_io.usb_vbase + SUNXI_TXCSR);
+				USBC_Dev_EpClearStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX);
 			}
 		} else {
 			if (value) {
-				//USBC_Dev_EpSendStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-				//__USBC_Dev_Rx_SendStall(usbc_otg->base_addr);
-				setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_RXCSR, (1 << SUNXI_BP_RXCSR_D_SEND_STALL));
+				USBC_Dev_EpSendStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
 			}else{
-				//USBC_Dev_EpClearStall(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-				//__USBC_Dev_Rx_ClearStall(usbc_otg->base_addr);
-				reg = readw(g_sw_udc_io.usb_vbase + SUNXI_RXCSR); 
-				reg &= ~((1 << SUNXI_BP_RXCSR_D_SENT_STALL) | (1 << SUNXI_BP_RXCSR_D_SEND_STALL));
-				writew(reg, g_sw_udc_io.usb_vbase + SUNXI_RXCSR);
+				USBC_Dev_EpClearStall(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
 			}
 		}
 	}
 
 	ep->halted = value ? 1 : 0;
 
-	//USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);
-	writeb(old_ep_index, g_sw_udc_io.usb_vbase + SUNXI_EPIND);
+	USBC_SelectActiveEp(g_sw_udc_io.usb_vbase, old_ep_index);
 
 	spin_unlock_irqrestore(&ep->dev->lock, flags);
 
@@ -1832,7 +2342,7 @@ static int sw_udc_get_frame(struct usb_gadget *_gadget)
 		return 0;
 	}
 
-	return g_sw_udc_io.usb_vbase + SUNXI_FRNUM;
+	return (int) (g_sw_udc_io.usb_vbase + SUNXI_FRNUM);
 }
 
 static int sw_udc_wakeup(struct usb_gadget *_gadget)
@@ -1948,8 +2458,6 @@ static void sw_udc_reinit(struct sw_udc *dev)
 
 static void sw_udc_enable(struct sw_udc *dev)
 {
-	u32 reg;
-
 	debug("sw_udc_enable called\n");
 
 	/* dev->gadget.speed = USB_SPEED_UNKNOWN; */
@@ -1957,34 +2465,16 @@ static void sw_udc_enable(struct sw_udc *dev)
 
 	debug("CONFIG_USB_GADGET_DUALSPEED\n");
 
-	// USBC_Dev_ConfigTransferMode(g_sw_udc_io.usb_bsp_hdle, USBC_TS_TYPE_BULK, USBC_TS_MODE_HS);
-	// __USBC_Dev_TsType_Bulk(usbc_otg->base_addr)
-	clrbits_8(g_sw_udc_io.usb_vbase + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_ISO_UPDATE_EN);
-	// __USBC_Dev_TsMode_Hs(usbc_otg->base_addr)
-	setbits_8(g_sw_udc_io.usb_vbase + SUNXI_PCTL, 0x1 < SUNXI_BP_POWER_D_HIGH_SPEED_EN);
+	USBC_Dev_ConfigTransferMode(g_sw_udc_io.usb_vbase, SUNXI_TS_TYPE_BULK, SUNXI_TS_MODE_HS);
 
 	/* Enable reset and suspend interrupt interrupts */
-	//USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_bsp_hdle, USBC_BP_INTUSB_SUSPEND);
-	reg = readb(g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
-	reg |= SUNXI_BP_INTUSB_SUSPEND;
-	writeb(reg, g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
-	//USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_bsp_hdle, USBC_BP_INTUSB_RESUME);
-	reg = readb(g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
-        reg |= SUNXI_BP_INTUSB_RESUME;
-        writeb(reg, g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);	
-	//USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_bsp_hdle, USBC_BP_INTUSB_RESET);
-	reg = readb(g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
-	reg |= SUNXI_BP_INTUSB_RESET;
-	writeb(reg, g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
-	//USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_bsp_hdle, USBC_BP_INTUSB_DISCONNECT);
-	reg = readb(g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
-	reg |= SUNXI_BP_INTUSB_DISCONNECT;
-	writeb(reg, g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
+	USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_vbase, SUNXI_BP_INTUSB_SUSPEND);
+	USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_vbase, SUNXI_BP_INTUSB_RESUME);
+	USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_vbase, SUNXI_BP_INTUSB_RESET);
+	USBC_INT_EnableUsbMiscUint(g_sw_udc_io.usb_vbase, SUNXI_BP_INTUSB_DISCONNECT);
 
 	/* Enable ep0 interrupt */
-	//USBC_INT_EnableEp(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX, 0);
-	// __USBC_INT_EnableTxEp(usbc_otg->base_addr, ep_index);
-	setbits_le16(g_sw_udc_io.usb_vbase + SUNXI_INTTxE, 1 << 0);
+	USBC_INT_EnableEp(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX, 0);
 
 	cfg_udc_command(SW_UDC_P_ENABLE);
 }
@@ -1994,14 +2484,9 @@ static void sw_udc_disable(struct sw_udc *dev)
 	debug("sw_udc_disable\n");
 
 	/* Disable all interrupts */
-	//USBC_INT_DisableUsbMiscAll(g_sw_udc_io.usb_bsp_hdle);
-	writeb(0, g_sw_udc_io.usb_vbase + SUNXI_INTUSBE);
-	//USBC_INT_DisableEpAll(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_RX);
-	// __USBC_INT_DisableTxAll(usbc_otg->base_addr);
-	writew(0, g_sw_udc_io.usb_vbase + SUNXI_INTRxE);
-	//USBC_INT_DisableEpAll(g_sw_udc_io.usb_bsp_hdle, USBC_EP_TYPE_TX);
-	// __USBC_INT_DisableTxAll(usbc_otg->base_addr);
-	writew(0, g_sw_udc_io.usb_vbase + SUNXI_INTTxE);
+	USBC_INT_DisableUsbMiscAll(g_sw_udc_io.usb_vbase);
+	USBC_INT_DisableEpAll(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_RX);
+	USBC_INT_DisableEpAll(g_sw_udc_io.usb_vbase, SUNXI_EP_TYPE_TX);
 
 	/* Clear the interrupt registers */
 	clear_all_irq();
@@ -2020,8 +2505,7 @@ s32 usbd_start_work(void)
 		return 0;
 	}
 
-	//USBC_Dev_ConectSwitch(g_sw_udc_io.usb_bsp_hdle, USBC_DEVICE_SWITCH_ON);
-	setbits_8(g_sw_udc_io.usb_vbase + SUNXI_PCTL, 0x1 << SUNXI_BP_POWER_D_SOFT_CONNECT);
+	USBC_Dev_ConectSwitch(g_sw_udc_io.usb_vbase, SUNXI_DEVICE_SWITCH_ON);
 
 	return 0;
 }
@@ -2035,8 +2519,7 @@ s32 usbd_stop_work(void)
 		return 0;
 	}
 
-	//USBC_Dev_ConectSwitch(g_sw_udc_io.usb_bsp_hdle, USBC_DEVICE_SWITCH_OFF);
-	clrbits_8(g_sw_udc_io.usb_vbase + SUNXI_PCTL, 0x1 << SUNXI_BP_POWER_D_SOFT_CONNECT);
+	USBC_Dev_ConectSwitch(g_sw_udc_io.usb_vbase, SUNXI_DEVICE_SWITCH_OFF);
 
 	return 0;
 }
@@ -2103,7 +2586,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 
 	spin_lock_irqsave(&dev->lock, flags);
 	dev->driver = 0;
-	stop_activity(dev, driver);
 	spin_unlock_irqrestore(&dev->lock, flags);
 
 	driver->unbind(&dev->gadget);
@@ -2202,8 +2684,8 @@ static void sw_phy_write(__u32 addr, __u32 data, __u32 len)
 {
 	// USBC_Phy_GetCsr(0)
 	// SW_VA_USB0_IO_BASE + 0x404;
-	__u32 temp = 0, dtmp = 0;
-	__u32 j=0;
+	u32 temp = 0, dtmp = 0;
+	u32 j=0;
 
 	dtmp = data;
 	for (j = 0; j < len; j++)
@@ -2285,6 +2767,7 @@ __s32 sw_udc_bsp_init(__u32 usbc_no, sw_udc_io_t *sw_udc_io)
 	return 0;
 }
 
+extern void sdelay(unsigned long loops);
 static __s32 sw_udc_io_init(__u32 usbc_no, sw_udc_io_t *sw_udc_io)
 {
 	unsigned long flags = 0;
