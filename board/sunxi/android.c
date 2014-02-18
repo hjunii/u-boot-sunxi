@@ -54,7 +54,7 @@ int android_boot_check(void)
 	DBG("misc.status   : %s\n", misc_message.status);
 	DBG("misc.recovery : %s\n", misc_message.recovery);
 
-	if (!strcmp(misc_message.command, "boot-recovery"))
+	if (!strcmp(misc_message.command, "recovery"))
 	{
 		/* there is a recovery command */
 		printf("find boot recovery\n");
@@ -67,7 +67,7 @@ int android_boot_check(void)
 		setenv("bootcmd", "booti mmc0");
 	}
 
-	if (!strcmp(misc_message.command, "boot-bootloader"))
+	if (!strcmp(misc_message.command, "bootloader"))
 	{
 		/* there is a fastboot command */
 		setenv("bootcmd", "fastboot");
