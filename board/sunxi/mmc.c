@@ -299,7 +299,6 @@ static struct _partition partitions[] = {
 	{ "environment", 44 },
 	{ "boot", 36 * 1024 },
 	{ "system", 500 * 1024 },
-	{ "data", 300 * 1024 },
 	{ "misc", 16 * 1024 },
 	{ "recovery", 36 * 1024 },
 	{ "cache", 125 * 1024 },

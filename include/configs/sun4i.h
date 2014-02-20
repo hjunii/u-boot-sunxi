@@ -35,7 +35,6 @@
 
 #define CONFIG_USB_GADGET
 #define CONFIG_USB_GADGET_SUNXI_UDC_OTG
-/*#define CONFIG_USB_SUNXI*/
 #define CONFIG_CMD_FASTBOOT
 #define CONFIG_SYS_CACHELINE_SIZE		64
 #define MEMORY_BASE                             0x80000000
