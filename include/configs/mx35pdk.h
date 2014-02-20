@@ -7,7 +7,7 @@
  *
  * Configuration for the MX35pdk Freescale board.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __CONFIG_H
@@ -23,7 +23,6 @@
 
 /* Set TEXT at the beginning of the NOR flash */
 #define CONFIG_SYS_TEXT_BASE	0xA0000000
-#define CONFIG_SYS_CACHELINE_SIZE	32
 
 #define CONFIG_BOARD_EARLY_INIT_F
 #define CONFIG_BOARD_LATE_INIT
@@ -41,10 +40,9 @@
 /*
  * Hardware drivers
  */
-#define CONFIG_HARD_I2C
-#define CONFIG_I2C_MXC
-#define CONFIG_SYS_I2C_BASE		I2C1_BASE_ADDR
-#define CONFIG_SYS_I2C_SPEED		100000
+#define CONFIG_SYS_I2C
+#define CONFIG_SYS_I2C_MXC
+#define CONFIG_SYS_SPD_BUS_NUM		0 /* I2C1 */
 #define CONFIG_MXC_SPI
 #define CONFIG_MXC_GPIO
 
@@ -154,8 +152,6 @@
 #undef	CONFIG_SYS_CLKS_IN_HZ	/* everything, incl board info, in Hz */
 
 #define CONFIG_SYS_LOAD_ADDR		CONFIG_LOADADDR
-
-#define CONFIG_SYS_HZ				1000
 
 /*
  * Physical Memory Map

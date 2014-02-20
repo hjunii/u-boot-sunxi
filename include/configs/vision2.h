@@ -5,7 +5,7 @@
  *
  * Configuration settings for the MX51-3Stack Freescale board.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __CONFIG_H
@@ -157,7 +157,6 @@
 
 #define CONFIG_SYS_LOAD_ADDR		CONFIG_LOADADDR
 
-#define CONFIG_SYS_HZ			1000
 #define CONFIG_CMDLINE_EDITING
 #define CONFIG_SYS_HUSH_PARSER
 

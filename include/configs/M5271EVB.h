@@ -5,7 +5,7 @@
  * (C) Copyright 2006 Lab X Technologies <zachary.landau@labxtechnologies.com>
  * (C) Copyright 2003 Josef Baumgartner <josef.baumgartner@telex.de>
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /*
@@ -125,7 +125,6 @@
 	"save\0"				\
 	""
 
-#define CONFIG_SYS_PROMPT		"=> "
 #define CONFIG_SYS_LONGHELP		/* undef to save memory */
 
 #if defined(CONFIG_CMD_KGDB)

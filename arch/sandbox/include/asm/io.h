@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2011 The Chromium OS Authors.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __SANDBOX_ASM_IO_H
@@ -38,6 +38,6 @@ static inline void unmap_sysmem(const void *vaddr)
 }
 
 /* Map from a pointer to our RAM buffer */
-phys_addr_t map_to_sysmem(void *ptr);
+phys_addr_t map_to_sysmem(const void *ptr);
 
 #endif

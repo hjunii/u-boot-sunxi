@@ -3,18 +3,21 @@
 # SPDX-License-Identifier:	GPL-2.0+
 #
 
+import re
+
 class Board:
     """A particular board that we can build"""
-    def __init__(self, target, arch, cpu, board_name, vendor, soc, options):
+    def __init__(self, status, arch, cpu, soc, vendor, board_name, target, options):
         """Create a new board type.
 
         Args:
-            target: Target name (use make <target>_config to configure)
+            status: define whether the board is 'Active' or 'Orphaned'
             arch: Architecture name (e.g. arm)
             cpu: Cpu name (e.g. arm1136)
-            board_name: Name of board (e.g. integrator)
-            vendor: Name of vendor (e.g. armltd)
             soc: Name of SOC, or '' if none (e.g. mx31)
+            vendor: Name of vendor (e.g. armltd)
+            board_name: Name of board (e.g. integrator)
+            target: Target name (use make <target>_config to configure)
             options: board-specific options (e.g. integratorcp:CM1136)
         """
         self.target = target
@@ -63,8 +66,10 @@ class Boards:
                 for upto in range(len(fields)):
                     if fields[upto] == '-':
                         fields[upto] = ''
-                while len(fields) < 9:
+                while len(fields) < 8:
                     fields.append('')
+                if len(fields) > 8:
+                    fields = fields[:8]
 
                 board = Board(*fields)
                 self.AddBoard(board)
@@ -132,14 +137,22 @@ class Boards:
             due to each argument, arranged by argument.
         """
         result = {}
+        argres = {}
         for arg in args:
             result[arg] = 0
+            argres[arg] = re.compile(arg)
         result['all'] = 0
 
         for board in self._boards:
             if args:
                 for arg in args:
-                    if arg in board.props:
+                    argre = argres[arg]
+                    match = False
+                    for prop in board.props:
+                        match = argre.match(prop)
+                        if match:
+                            break
+                    if match:
                         if not board.build_it:
                             board.build_it = True
                             result[arg] += 1

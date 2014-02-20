@@ -11,7 +11,7 @@
  *
  * Manikandan Pillai <mani.pillai@ti.com>
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __OMAP3EVM_CONFIG_H
@@ -107,6 +107,7 @@
 						10, 11, 12, 13}
 #define CONFIG_SYS_NAND_ECCSIZE		512
 #define CONFIG_SYS_NAND_ECCBYTES	3
+#define CONFIG_NAND_OMAP_ECCSCHEME	OMAP_ECC_HAM1_CODE_HW
 #define CONFIG_SYS_NAND_U_BOOT_START   CONFIG_SYS_TEXT_BASE
 #define CONFIG_SYS_NAND_U_BOOT_OFFS	0x80000
 

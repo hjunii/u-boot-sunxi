@@ -68,10 +68,9 @@ static int sdhci_transfer_data(struct sdhci_host *host, struct mmc_data *data,
 	unsigned int stat, rdy, mask, timeout, block = 0;
 #ifdef CONFIG_MMC_SDMA
 	unsigned char ctrl;
-	ctrl = sdhci_readl(host, SDHCI_HOST_CONTROL);
+	ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
 	ctrl &= ~SDHCI_CTRL_DMA_MASK;
-	ctrl |= SDHCI_CTRL_SDMA;
-	sdhci_writel(host, ctrl, SDHCI_HOST_CONTROL);
+	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
 #endif
 
 	timeout = 1000000;
@@ -110,6 +109,19 @@ static int sdhci_transfer_data(struct sdhci_host *host, struct mmc_data *data,
 	return 0;
 }
 
+/*
+ * No command will be sent by driver if card is busy, so driver must wait
+ * for card ready state.
+ * Every time when card is busy after timeout then (last) timeout value will be
+ * increased twice but only if it doesn't exceed global defined maximum.
+ * Each function call will use last timeout value. Max timeout can be redefined
+ * in board config file.
+ */
+#ifndef CONFIG_SDHCI_CMD_MAX_TIMEOUT
+#define CONFIG_SDHCI_CMD_MAX_TIMEOUT		3200
+#endif
+#define CONFIG_SDHCI_CMD_DEFAULT_TIMEOUT	100
+
 int sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		       struct mmc_data *data)
 {
@@ -118,11 +130,12 @@ int sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	int ret = 0;
 	int trans_bytes = 0, is_aligned = 1;
 	u32 mask, flags, mode;
-	unsigned int timeout, start_addr = 0;
+	unsigned int time = 0, start_addr = 0;
 	unsigned int retry = 10000;
+	int mmc_dev = mmc->block_dev.dev;
 
-	/* Wait max 10 ms */
-	timeout = 10;
+	/* Timeout unit - ms */
+	static unsigned int cmd_timeout = CONFIG_SDHCI_CMD_DEFAULT_TIMEOUT;
 
 	sdhci_writel(host, SDHCI_INT_ALL_MASK, SDHCI_INT_STATUS);
 	mask = SDHCI_CMD_INHIBIT | SDHCI_DATA_INHIBIT;
@@ -133,11 +146,18 @@ int sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		mask &= ~SDHCI_DATA_INHIBIT;
 
 	while (sdhci_readl(host, SDHCI_PRESENT_STATE) & mask) {
-		if (timeout == 0) {
-			printf("Controller never released inhibit bit(s).\n");
-			return COMM_ERR;
+		if (time >= cmd_timeout) {
+			printf("MMC: %d busy ", mmc_dev);
+			if (2 * cmd_timeout <= CONFIG_SDHCI_CMD_MAX_TIMEOUT) {
+				cmd_timeout += cmd_timeout;
+				printf("timeout increasing to: %u ms.\n",
+				       cmd_timeout);
+			} else {
+				puts("timeout.\n");
+				return COMM_ERR;
+			}
 		}
-		timeout--;
+		time++;
 		udelay(1000);
 	}
 
@@ -254,7 +274,7 @@ static int sdhci_set_clock(struct mmc *mmc, unsigned int clock)
 	if (clock == 0)
 		return 0;
 
-	if ((host->version & SDHCI_SPEC_VER_MASK) >= SDHCI_SPEC_300) {
+	if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300) {
 		/* Version 3.00 divisors must be a multiple of 2. */
 		if (mmc->f_max <= clock)
 			div = 1;
@@ -347,10 +367,11 @@ void sdhci_set_ios(struct mmc *mmc)
 	ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
 	if (mmc->bus_width == 8) {
 		ctrl &= ~SDHCI_CTRL_4BITBUS;
-		if ((host->version & SDHCI_SPEC_VER_MASK) >= SDHCI_SPEC_300)
+		if ((SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300) ||
+				(host->quirks & SDHCI_QUIRK_USE_WIDE8))
 			ctrl |= SDHCI_CTRL_8BITBUS;
 	} else {
-		if ((host->version & SDHCI_SPEC_VER_MASK) >= SDHCI_SPEC_300)
+		if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300)
 			ctrl &= ~SDHCI_CTRL_8BITBUS;
 		if (mmc->bus_width == 4)
 			ctrl |= SDHCI_CTRL_4BITBUS;
@@ -437,7 +458,7 @@ int add_sdhci(struct sdhci_host *host, u32 max_clk, u32 min_clk)
 	if (max_clk)
 		mmc->f_max = max_clk;
 	else {
-		if ((host->version & SDHCI_SPEC_VER_MASK) >= SDHCI_SPEC_300)
+		if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300)
 			mmc->f_max = (caps & SDHCI_CLOCK_V3_BASE_MASK)
 				>> SDHCI_CLOCK_BASE_SHIFT;
 		else
@@ -452,7 +473,7 @@ int add_sdhci(struct sdhci_host *host, u32 max_clk, u32 min_clk)
 	if (min_clk)
 		mmc->f_min = min_clk;
 	else {
-		if ((host->version & SDHCI_SPEC_VER_MASK) >= SDHCI_SPEC_300)
+		if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300)
 			mmc->f_min = mmc->f_max / SDHCI_MAX_DIV_SPEC_300;
 		else
 			mmc->f_min = mmc->f_max / SDHCI_MAX_DIV_SPEC_200;
@@ -470,7 +491,7 @@ int add_sdhci(struct sdhci_host *host, u32 max_clk, u32 min_clk)
 		mmc->voltages |= host->voltages;
 
 	mmc->host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_4BIT;
-	if ((host->version & SDHCI_SPEC_VER_MASK) >= SDHCI_SPEC_300) {
+	if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300) {
 		if (caps & SDHCI_CAN_DO_8BIT)
 			mmc->host_caps |= MMC_MODE_8BIT;
 	}

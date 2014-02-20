@@ -7,11 +7,12 @@
  *   Copyright 2010-2011 Freescale Semiconductor, Inc.
  *   author Andy Fleming
  *
- * Some code get from linux kenrel
+ * Some code copied from linux kernel
  * Copyright (c) 2006 Herbert Valerio Riedel <hvr@gnu.org>
  */
 #include <miiphy.h>
 
+/* This code does not check the partner abilities. */
 static int smsc_parse_status(struct phy_device *phydev)
 {
 	int mii_reg;
@@ -64,7 +65,7 @@ static struct phy_driver lan8710_driver = {
 	.mask = 0xffff0,
 	.features = PHY_BASIC_FEATURES,
 	.config = &genphy_config_aneg,
-	.startup = &smsc_startup,
+	.startup = &genphy_startup,
 	.shutdown = &genphy_shutdown,
 };
 

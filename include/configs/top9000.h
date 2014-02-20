@@ -51,7 +51,6 @@
 /* ARM asynchronous clock */
 #define CONFIG_SYS_AT91_SLOW_CLOCK	32768		/* slow clock xtal */
 #define CONFIG_SYS_AT91_MAIN_CLOCK	18432000	/* main clock xtal */
-#define CONFIG_SYS_HZ			1000
 
 /* Misc CPU related */
 #define CONFIG_ARCH_CPU_INIT
@@ -120,7 +119,6 @@
 #define CONFIG_ATMEL_SPI0		/* SPI used for FRAM is SPI0 */
 #define FRAM_SPI_BUS		0
 #define FRAM_CS_NUM		0
-#define CONFIG_SPI_FLASH		/* RAMTRON FRAM on SPI bus */
 #define CONFIG_SPI_FRAM_RAMTRON
 #define CONFIG_SF_DEFAULT_SPEED	1000000	/* be conservative here... */
 #define CONFIG_SF_DEFAULT_MODE	SPI_MODE_0
@@ -175,6 +173,7 @@
 
 /* USB */
 #define CONFIG_USB_ATMEL
+#define CONFIG_USB_ATMEL_CLK_SEL_PLLB
 #define CONFIG_USB_OHCI_NEW
 #define CONFIG_DOS_PARTITION
 #define CONFIG_SYS_USB_OHCI_CPU_INIT

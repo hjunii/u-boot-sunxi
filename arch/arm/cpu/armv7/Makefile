@@ -5,36 +5,28 @@
 # SPDX-License-Identifier:	GPL-2.0+
 #
 
-include $(TOPDIR)/config.mk
+extra-y	:= start.o
 
-LIB	= $(obj)lib$(CPU).o
+obj-y	+= cache_v7.o
 
-START	:= start.o
-
-COBJS	+= cache_v7.o
-
-COBJS	+= cpu.o
-COBJS	+= syslib.o
-COBJS	+= cmd_boot.o
+obj-y	+= cpu.o
+obj-y	+= syslib.o
+obj-y	+= cmd_boot.o
 
 ifneq ($(CONFIG_AM43XX)$(CONFIG_AM33XX)$(CONFIG_OMAP44XX)$(CONFIG_OMAP54XX)$(CONFIG_TEGRA)$(CONFIG_MX6)$(CONFIG_TI81XX)$(CONFIG_SUNXI),)
-SOBJS	+= lowlevel_init.o
+ifneq ($(CONFIG_SKIP_LOWLEVEL_INIT),y)
+obj-y	+= lowlevel_init.o
+endif
 endif
 
-SRCS	:= $(START:.o=.S) $(COBJS:.o=.c)
-OBJS	:= $(addprefix $(obj),$(COBJS) $(SOBJS))
-START	:= $(addprefix $(obj),$(START))
+ifneq ($(CONFIG_ARMV7_NONSEC)$(CONFIG_ARMV7_VIRT),)
+obj-y	+= nonsec_virt.o
+obj-y	+= virt-v7.o
+endif
 
-all:	$(obj).depend $(START) $(LIB)
+obj-$(CONFIG_OMAP_COMMON) += omap-common/
+obj-$(CONFIG_TEGRA) += tegra-common/
 
-$(LIB):	$(OBJS)
-	$(call cmd_link_o_target, $(OBJS))
-
-#########################################################################
-
-# defines $(obj).depend target
-include $(SRCTREE)/rules.mk
-
-sinclude $(obj).depend
-
-#########################################################################
+ifneq (,$(filter s5pc1xx exynos,$(SOC)))
+obj-y += s5p-common/
+endif

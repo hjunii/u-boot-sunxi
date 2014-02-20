@@ -3,7 +3,7 @@
  * (C) Copyright 2008
  * Graeme Russ, graeme.russ@gmail.com.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <asm/ibmpc.h>
@@ -222,7 +222,6 @@
 #define CONFIG_SYS_MEMTEST_START		0x00100000
 #define CONFIG_SYS_MEMTEST_END			0x01000000
 #define CONFIG_SYS_LOAD_ADDR			0x100000
-#define CONFIG_SYS_HZ				1000
 
 /*-----------------------------------------------------------------------
  * SDRAM Configuration

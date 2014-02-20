@@ -21,6 +21,10 @@
 #include <net.h>
 #include <netdev.h>
 
+#ifdef CONFIG_USB_GADGET_ATMEL_USBA
+#include <asm/arch/atmel_usba_udc.h>
+#endif
+
 DECLARE_GLOBAL_DATA_PTR;
 
 /* ------------------------------------------------------------------------- */
@@ -127,7 +131,8 @@ static void sama5d3xek_lcd_hw_init(void)
 
 void lcd_show_board_info(void)
 {
-	ulong dram_size, nand_size;
+	ulong dram_size;
+	uint64_t nand_size;
 	int i;
 	char temp[32];
 
@@ -146,7 +151,7 @@ void lcd_show_board_info(void)
 	for (i = 0; i < CONFIG_SYS_MAX_NAND_DEVICE; i++)
 		nand_size += nand_info[i].size;
 #endif
-	lcd_printf("%ld MB SDRAM, %ld MB NAND\n",
+	lcd_printf("%ld MB SDRAM, %lld MB NAND\n",
 		   dram_size >> 20, nand_size >> 20);
 }
 #endif /* CONFIG_LCD_INFO */
@@ -169,6 +174,9 @@ int board_init(void)
 #endif
 #ifdef CONFIG_CMD_USB
 	sama5d3xek_usb_hw_init();
+#endif
+#ifdef CONFIG_USB_GADGET_ATMEL_USBA
+	at91_udp_hw_init();
 #endif
 #ifdef CONFIG_GENERIC_ATMEL_MCI
 	sama5d3xek_mci_hw_init();
@@ -220,6 +228,12 @@ int board_eth_init(bd_t *bis)
 		rc = macb_eth_initialize(0, (void *)ATMEL_BASE_EMAC, 0x00);
 	if (has_gmac())
 		rc = macb_eth_initialize(0, (void *)ATMEL_BASE_GMAC, 0x00);
+#endif
+#ifdef CONFIG_USB_GADGET_ATMEL_USBA
+	usba_udc_probe(&pdata);
+#ifdef CONFIG_USB_ETH_RNDIS
+	usb_eth_initialize(bis);
+#endif
 #endif
 
 	return rc;

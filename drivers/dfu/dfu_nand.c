@@ -19,12 +19,7 @@
 #include <jffs2/load_kernel.h>
 #include <nand.h>
 
-enum dfu_nand_op {
-	DFU_OP_READ = 1,
-	DFU_OP_WRITE,
-};
-
-static int nand_block_op(enum dfu_nand_op op, struct dfu_entity *dfu,
+static int nand_block_op(enum dfu_op op, struct dfu_entity *dfu,
 			u64 offset, void *buf, long *len)
 {
 	loff_t start, lim;
@@ -126,6 +121,7 @@ static int dfu_read_medium_nand(struct dfu_entity *dfu, u64 offset, void *buf,
 
 	switch (dfu->layout) {
 	case DFU_RAW_ADDR:
+		*len = dfu->data.nand.size;
 		ret = nand_block_read(dfu, offset, buf, len);
 		break;
 	default:

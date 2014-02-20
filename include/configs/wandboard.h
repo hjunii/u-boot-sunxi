@@ -99,12 +99,10 @@
 #define CONFIG_IPUV3_CLK 260000000
 #define CONFIG_IMX_HDMI
 
-#if defined(CONFIG_MX6DL)
+#if defined(CONFIG_MX6DL) || defined(CONFIG_MX6S)
 #define CONFIG_DEFAULT_FDT_FILE		"imx6dl-wandboard.dtb"
 #elif defined(CONFIG_MX6Q)
 #define CONFIG_DEFAULT_FDT_FILE		"imx6q-wandboard.dtb"
-#elif defined(CONFIG_MX6S)
-#define CONFIG_DEFAULT_FDT_FILE		"imx6s-wandboard.dtb"
 #endif
 
 #define CONFIG_EXTRA_ENV_SETTINGS \
@@ -198,7 +196,6 @@
 /* Miscellaneous configurable options */
 #define CONFIG_SYS_LONGHELP
 #define CONFIG_SYS_HUSH_PARSER
-#define CONFIG_SYS_PROMPT	       "=> "
 #define CONFIG_AUTO_COMPLETE
 #define CONFIG_SYS_CBSIZE		256
 
@@ -208,7 +205,6 @@
 #define CONFIG_SYS_BARGSIZE CONFIG_SYS_CBSIZE
 
 #define CONFIG_SYS_LOAD_ADDR		CONFIG_LOADADDR
-#define CONFIG_SYS_HZ			1000
 
 #define CONFIG_CMDLINE_EDITING
 

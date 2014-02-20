@@ -9,7 +9,7 @@
  *
  * Configuration settings for the DevKit8000 board.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __CONFIG_H
@@ -90,10 +90,10 @@
 #define CONFIG_DOS_PARTITION		1
 
 /* I2C */
-#define CONFIG_HARD_I2C			1
-#define CONFIG_SYS_I2C_SPEED		100000
-#define CONFIG_SYS_I2C_SLAVE		1
-#define CONFIG_DRIVER_OMAP34XX_I2C	1
+#define CONFIG_SYS_I2C
+#define CONFIG_SYS_OMAP24_I2C_SPEED	100000
+#define CONFIG_SYS_OMAP24_I2C_SLAVE	1
+#define CONFIG_SYS_I2C_OMAP34XX
 
 /* TWL4030 */
 #define CONFIG_TWL4030_POWER		1
@@ -257,7 +257,6 @@
  */
 #define CONFIG_SYS_TIMERBASE		(OMAP34XX_GPT2)
 #define CONFIG_SYS_PTV			2 /* Divisor: 2^(PTV+1) => 8 */
-#define CONFIG_SYS_HZ			1000
 
 /*  Physical Memory Map  */
 #define CONFIG_NR_DRAM_BANKS		2 /* CS1 may or may not be populated */
@@ -278,8 +277,8 @@
 #define CONFIG_SYS_INIT_RAM_ADDR        0x4020f800
 #define CONFIG_SYS_INIT_RAM_SIZE        0x800
 #define CONFIG_SYS_INIT_SP_ADDR         (CONFIG_SYS_INIT_RAM_ADDR + \
-		                                         CONFIG_SYS_INIT_RAM_SIZE - \
-		                                         GENERATED_GBL_DATA_SIZE)
+							 CONFIG_SYS_INIT_RAM_SIZE - \
+							 GENERATED_GBL_DATA_SIZE)
 
 /* SRAM config */
 #define CONFIG_SYS_SRAM_START              0x40200000
@@ -328,6 +327,7 @@
 
 #define CONFIG_SYS_NAND_ECCSIZE		512
 #define CONFIG_SYS_NAND_ECCBYTES	3
+#define CONFIG_NAND_OMAP_ECCSCHEME	OMAP_ECC_HAM1_CODE_HW
 
 #define CONFIG_SYS_NAND_U_BOOT_START   CONFIG_SYS_TEXT_BASE
 

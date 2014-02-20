@@ -14,7 +14,9 @@
  * Copyright (C) 2008 Nokia Corporation: drop_ffs() function by
  * Artem Bityutskiy <dedekind1@gmail.com> from mtd-utils
  *
- * SPDX-License-Identifier:	GPL-2.0+
+ * Copyright 2010 Freescale Semiconductor
+ *
+ * SPDX-License-Identifier:	GPL-2.0
  */
 
 #include <common.h>
@@ -142,8 +144,8 @@ int nand_erase_opts(nand_info_t *meminfo, const nand_erase_options_t *opts)
 			ops.mode = MTD_OPS_AUTO_OOB;
 
 			result = mtd_write_oob(meminfo,
-			                            erase.addr,
-			                            &ops);
+						    erase.addr,
+						    &ops);
 			if (result != 0) {
 				printf("\n%s: MTD writeoob failure: %d\n",
 				       mtd_device, result);

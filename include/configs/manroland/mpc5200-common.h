@@ -2,7 +2,7 @@
  * (C) Copyright 2009
  * Heiko Schocher, DENX Software Engineering, hs@denx.de.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __MANROLAND_MPC52XX__COMMON_H
@@ -142,8 +142,6 @@
 
 /*use  Hardware WDT */
 #define CONFIG_HW_WATCHDOG
-
-#define CONFIG_SYS_HZ			1000	/* decrementer freq: 1 ms ticks */
 
 #define CONFIG_SYS_CACHELINE_SIZE	32	/* For MPC5xxx CPUs		*/
 #if defined(CONFIG_CMD_KGDB)

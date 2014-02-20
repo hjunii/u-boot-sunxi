@@ -7,7 +7,7 @@
  * (C) Copyright 2012
  * DENX Software Engineering, Anatolij Gustschin <agust@denx.de>
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __O2D_CONFIG_H
@@ -311,7 +311,6 @@
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP			/* undef to save memory	    */
-#define CONFIG_SYS_PROMPT		"=> "	/* Monitor Command Prompt   */
 #define CONFIG_CMDLINE_EDITING
 #define CONFIG_SYS_HUSH_PARSER
 
@@ -332,7 +331,6 @@
 #define CONFIG_SYS_LOAD_ADDR		0x100000
 
 /* decrementer freq: 1 ms ticks */
-#define CONFIG_SYS_HZ			1000
 
 /*
  * Various low-level settings

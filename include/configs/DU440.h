@@ -223,7 +223,7 @@
 	"flash_self=run ramargs addip addtty optargs;"			\
 		"bootm ${kernel_addr} ${ramdisk_addr}\0"		\
 	"net_nfs=tftp 200000 ${img};run nfsargs addip addtty optargs;"	\
-	        "bootm\0"						\
+		"bootm\0"						\
 	"rootpath=/tftpboot/du440/target_root_du440\0"			\
 	"img=/tftpboot/du440/uImage\0"					\
 	"kernel_addr=FFC00000\0"					\
@@ -310,7 +310,6 @@ int du440_phy_addr(int devnum);
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP			/* undef to save memory		*/
-#define CONFIG_SYS_PROMPT	        "=> "	/* Monitor Command Prompt	*/
 #if defined(CONFIG_CMD_KGDB)
 #define CONFIG_SYS_CBSIZE	        1024	/* Console I/O Buffer Size	*/
 #else
@@ -326,8 +325,6 @@ int du440_phy_addr(int devnum);
 
 #define CONFIG_SYS_LOAD_ADDR		0x100000  /* default load address	*/
 #define CONFIG_SYS_EXTBDINFO		1	/* To use extended board_into (bd_t) */
-
-#define CONFIG_SYS_HZ		        1000	/* decrementer freq: 1 ms ticks	*/
 
 #define CONFIG_CMDLINE_EDITING	1	/* add command line history	*/
 #define CONFIG_LOOPW            1       /* enable loopw command         */

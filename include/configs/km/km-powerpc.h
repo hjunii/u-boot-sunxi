@@ -2,7 +2,7 @@
  * (C) Copyright 2011
  * Heiko Schocher, DENX Software Engineering, hs@denx.de.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __CONFIG_KEYMILE_POWERPC_H
@@ -16,6 +16,9 @@
 
 #define CONFIG_CMD_DTT
 #define CONFIG_JFFS2_CMDLINE
+
+/* standard km ethernet_present for piggy */
+#define CONFIG_KM_COMMON_ETH_INIT
 
 /* EEprom support 24C08, 24C16, 24C64 */
 #define CONFIG_SYS_I2C_MULTI_EEPROMS
@@ -31,6 +34,9 @@
 #define CONFIG_SYS_MEMTEST_END	0x00f00000	/* 1 ... 15 MB in DRAM	*/
 
 #define CONFIG_SYS_LOAD_ADDR	0x100000	/* default load address */
+
+/* Reserve 4 MB for malloc */
+#define CONFIG_SYS_MALLOC_LEN		(4 * 1024 * 1024)
 
 /******************************************************************************
  * (PRAM usage)

@@ -2,7 +2,7 @@
  * (C) Copyright 2001
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /* ------------------------------------------------------------------------- */
@@ -71,7 +71,6 @@
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP		1	/* undef to save memory		*/
-#define CONFIG_SYS_PROMPT		"=> "	/* Monitor Command Prompt	*/
 #define CONFIG_SYS_CBSIZE		256	/* Console I/O Buffer Size	*/
 #define CONFIG_SYS_PBSIZE (CONFIG_SYS_CBSIZE+sizeof(CONFIG_SYS_PROMPT)+16)	/* Print Buffer Size	*/
 #define CONFIG_SYS_MAXARGS		8	/* max number of command args	*/
@@ -119,7 +118,7 @@
 
 #define CONFIG_ENV_IS_IN_FLASH	1
 #define CONFIG_ENV_SECT_SIZE	0x20000 /* Size of one Flash sector */
-#define CONFIG_ENV_SIZE		CONFIG_ENV_SECT_SIZE	/* Use one Flash sector for enviroment	*/
+#define CONFIG_ENV_SIZE		CONFIG_ENV_SECT_SIZE	/* Use one Flash sector for environment	*/
 #define CONFIG_ENV_ADDR		0xFFFC0000
 #define CONFIG_ENV_OFFSET		0	/* starting right at the beginning  */
 
@@ -217,7 +216,6 @@
  * (address mappings, register initial values, etc.)
  * You should know what you are doing if you make changes here.
  */
-#define CONFIG_SYS_HZ			1000
 
 #define CONFIG_SYS_CLK_FREQ	33333333	/* external frequency to pll	*/
 #define CONFIG_PLL_PCI_TO_MEM_MULTIPLIER  2	/* for MPC8240 only		*/

@@ -14,7 +14,7 @@
  *
  * Configuation settings for the xaeniax board.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __CONFIG_H
@@ -116,7 +116,6 @@
 
 #define CONFIG_SYS_LOAD_ADDR		0xa1000000	/* default load address */
 
-#define CONFIG_SYS_HZ			1000
 #define CONFIG_SYS_CPUSPEED		0x141		/* set core clock to 400/200/100 MHz */
 
 /*

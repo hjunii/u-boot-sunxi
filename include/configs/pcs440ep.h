@@ -2,7 +2,7 @@
  * (C) Copyright 2006
  * Stefan Roese, DENX Software Engineering, sr@denx.de.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /************************************************************************
@@ -157,7 +157,7 @@
 	"flash_self=run ramargs addip addtty;"				\
 		"bootm ${kernel_addr} ${ramdisk_addr}\0"		\
 	"net_nfs=tftp 200000 ${bootfile};run nfsargs addip addtty;"     \
-	        "bootm\0"						\
+		"bootm\0"						\
 	"rootpath=/opt/eldk/ppc_4xx\0"					\
 	"bootfile=/tftpboot/pcs440ep/uImage\0"				\
 	"kernel_addr=FFF00000\0"					\
@@ -276,7 +276,6 @@
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP			/* undef to save memory		*/
-#define CONFIG_SYS_PROMPT	        "=> "	/* Monitor Command Prompt	*/
 #if defined(CONFIG_CMD_KGDB)
 #define CONFIG_SYS_CBSIZE	        1024	/* Console I/O Buffer Size	*/
 #else
@@ -292,8 +291,6 @@
 #define CONFIG_SYS_LOAD_ADDR		0x100000	/* default load address */
 #define CONFIG_SYS_EXTBDINFO		1	/* To use extended board_into (bd_t) */
 #define CONFIG_LYNXKDI          1       /* support kdi files            */
-
-#define CONFIG_SYS_HZ		        1000	/* decrementer freq: 1 ms ticks */
 
 /*-----------------------------------------------------------------------
  * PCI stuff

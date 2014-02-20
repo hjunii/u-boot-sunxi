@@ -2,7 +2,7 @@
  * Copyright (C) 2012 Michal Simek <monstr@monstr.eu>
  * Copyright (C) 2012 Xilinx, Inc. All rights reserved.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 #include <common.h>
 #include <asm/io.h>
@@ -10,6 +10,10 @@
 #include <asm/arch/hardware.h>
 
 void lowlevel_init(void)
+{
+}
+
+int arch_cpu_init(void)
 {
 	zynq_slcr_unlock();
 	/* remap DDR to zero, FILTERSTART */
@@ -31,6 +35,8 @@ void lowlevel_init(void)
 	writel(0xC, &slcr_base->ddr_urgent);
 
 	zynq_slcr_lock();
+
+	return 0;
 }
 
 void reset_cpu(ulong addr)

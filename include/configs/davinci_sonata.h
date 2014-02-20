@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2007 Sergey Kubushyn <ksi@koi8.net>
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __CONFIG_H
@@ -46,7 +46,6 @@
 #define CONFIG_ARM926EJS			/* arm926ejs CPU core */
 #define CONFIG_SYS_TIMERBASE		0x01c21400	/* use timer 0 */
 #define CONFIG_SYS_HZ_CLOCK		27000000	/* Timer Input clock freq */
-#define CONFIG_SYS_HZ			1000
 #define CONFIG_SOC_DM644X
 /*====================================================*/
 /* EEPROM definitions for Atmel 24C256BN SEEPROM chip */

@@ -133,6 +133,7 @@ int misc_init_r(void)
 {
 	int phy_type;
 	u32 auxclk, altclksrc;
+	uint8_t device_mac[6];
 
 	/* EHCI is not supported on ES1.0 */
 	if (omap_revision() == OMAP4430_ES1_0)
@@ -185,6 +186,21 @@ int misc_init_r(void)
 	altclksrc |= ALTCLKSRC_ENABLE_INT_MASK | ALTCLKSRC_ENABLE_EXT_MASK;
 
 	writel(altclksrc, &scrm->altclksrc);
+
+	if (!getenv("usbethaddr")) {
+		/*
+		 * create a fake MAC address from the processor ID code.
+		 * first byte is 0x02 to signify locally administered.
+		 */
+		device_mac[0] = 0x02;
+		device_mac[1] = readl(STD_FUSE_DIE_ID_3) & 0xff;
+		device_mac[2] = readl(STD_FUSE_DIE_ID_2) & 0xff;
+		device_mac[3] = readl(STD_FUSE_DIE_ID_1) & 0xff;
+		device_mac[4] = readl(STD_FUSE_DIE_ID_0) & 0xff;
+		device_mac[5] = (readl(STD_FUSE_DIE_ID_0) >> 8) & 0xff;
+
+		eth_setenv_enetaddr("usbethaddr", device_mac);
+	}
 
 	return 0;
 }
@@ -253,7 +269,8 @@ static struct omap_usbhs_board_data usbhs_bdata = {
 	.port_mode[2] = OMAP_USBHS_PORT_MODE_UNUSED,
 };
 
-int ehci_hcd_init(int index, struct ehci_hccr **hccr, struct ehci_hcor **hcor)
+int ehci_hcd_init(int index, enum usb_init_type init,
+		struct ehci_hccr **hccr, struct ehci_hcor **hcor)
 {
 	int ret;
 	unsigned int utmi_clk;
@@ -263,7 +280,7 @@ int ehci_hcd_init(int index, struct ehci_hccr **hccr, struct ehci_hcor **hcor)
 	utmi_clk |= HSUSBHOST_CLKCTRL_CLKSEL_UTMI_P1_MASK;
 	sr32((void *)CM_L3INIT_HSUSBHOST_CLKCTRL, 0, 32, utmi_clk);
 
-	ret = omap_ehci_hcd_init(&usbhs_bdata, hccr, hcor);
+	ret = omap_ehci_hcd_init(index, &usbhs_bdata, hccr, hcor);
 	if (ret < 0)
 		return ret;
 

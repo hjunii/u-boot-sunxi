@@ -567,6 +567,7 @@ static ulong bootm_disable_interrupts(void)
 #ifdef CONFIG_NETCONSOLE
 	/* Stop the ethernet stack if NetConsole could have left it up */
 	eth_halt();
+	eth_unregister(eth_get_dev());
 #endif
 
 #if defined(CONFIG_CMD_USB)
@@ -808,8 +809,12 @@ int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 	return do_bootm_states(cmdtp, flag, argc, argv, BOOTM_STATE_START |
 		BOOTM_STATE_FINDOS | BOOTM_STATE_FINDOTHER |
-		BOOTM_STATE_LOADOS | BOOTM_STATE_OS_PREP |
-		BOOTM_STATE_OS_FAKE_GO | BOOTM_STATE_OS_GO, &images, 1);
+		BOOTM_STATE_LOADOS |
+#if defined(CONFIG_PPC) || defined(CONFIG_MIPS)
+		BOOTM_STATE_OS_CMDLINE |
+#endif
+		BOOTM_STATE_OS_PREP | BOOTM_STATE_OS_FAKE_GO |
+		BOOTM_STATE_OS_GO, &images, 1);
 }
 
 int bootm_maybe_autostart(cmd_tbl_t *cmdtp, const char *cmd)
@@ -1473,10 +1478,8 @@ static int do_bootm_netbsd(int flag, int argc, char * const argv[],
 	char *consdev;
 	char *cmdline;
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
@@ -1554,10 +1557,8 @@ static int do_bootm_lynxkdi(int flag, int argc, char * const argv[],
 {
 	image_header_t *hdr = &images->legacy_hdr_os_copy;
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
@@ -1578,10 +1579,8 @@ static int do_bootm_rtems(int flag, int argc, char * const argv[],
 {
 	void (*entry_point)(bd_t *);
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
@@ -1613,10 +1612,8 @@ static int do_bootm_ose(int flag, int argc, char * const argv[],
 {
 	void (*entry_point)(void);
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
@@ -1649,10 +1646,8 @@ static int do_bootm_plan9(int flag, int argc, char * const argv[],
 	void (*entry_point)(void);
 	char *s;
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
@@ -1698,10 +1693,8 @@ static int do_bootm_vxworks(int flag, int argc, char * const argv[],
 {
 	char str[80];
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
@@ -1723,10 +1716,8 @@ static int do_bootm_qnxelf(int flag, int argc, char * const argv[],
 	char *local_args[2];
 	char str[16];
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
@@ -1750,10 +1741,8 @@ static int do_bootm_integrity(int flag, int argc, char * const argv[],
 {
 	void (*entry_point)(void);
 
-	if (flag & BOOTM_STATE_OS_PREP)
+	if (flag != BOOTM_STATE_OS_GO)
 		return 0;
-	if ((flag != 0) && (flag != BOOTM_STATE_OS_GO))
-		return 1;
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {

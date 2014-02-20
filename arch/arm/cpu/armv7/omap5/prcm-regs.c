@@ -286,12 +286,6 @@ struct prcm_regs const omap5_es1_prcm = {
 	.prm_vc_val_bypass = 0x4ae07ba0,
 	.prm_vc_cfg_i2c_mode = 0x4ae07bb4,
 	.prm_vc_cfg_i2c_clk = 0x4ae07bb8,
-	.prm_sldo_core_setup = 0x4ae07bc4,
-	.prm_sldo_core_ctrl = 0x4ae07bc8,
-	.prm_sldo_mpu_setup = 0x4ae07bcc,
-	.prm_sldo_mpu_ctrl = 0x4ae07bd0,
-	.prm_sldo_mm_setup = 0x4ae07bd4,
-	.prm_sldo_mm_ctrl = 0x4ae07bd8,
 
 	/* SCRM stuff, used by some boards */
 	.scrm_auxclk0 = 0x4ae0a310,
@@ -301,6 +295,7 @@ struct prcm_regs const omap5_es1_prcm = {
 struct omap_sys_ctrl_regs const omap5_ctrl = {
 	.control_status				= 0x4A002134,
 	.control_std_fuse_opp_vdd_mpu_2		= 0x4A0021B4,
+	.control_phy_power_usb 			= 0x4A002370,
 	.control_padconf_core_base		= 0x4A002800,
 	.control_paconf_global			= 0x4A002DA0,
 	.control_paconf_mode			= 0x4A002DA4,
@@ -532,8 +527,6 @@ struct prcm_regs const omap5_es2_prcm = {
 	.cm1_abe_timer8_clkctrl = 0x4a004580,
 	.cm1_abe_wdt3_clkctrl = 0x4a004588,
 
-
-
 	/* cm2.ckgen */
 	.cm_clksel_mpu_m3_iss_root = 0x4a008100,
 	.cm_clksel_usb_60mhz = 0x4a008104,
@@ -575,6 +568,7 @@ struct prcm_regs const omap5_es2_prcm = {
 	.cm_div_m2_dpll_unipro = 0x4a0081d0,
 	.cm_ssc_deltamstep_dpll_unipro = 0x4a0081e8,
 	.cm_ssc_modfreqdiv_dpll_unipro = 0x4a0081ec,
+	.cm_coreaon_usb_phy_core_clkctrl = 0x4A008640,
 	.cm_coreaon_bandgap_clkctrl = 0x4a008648,
 	.cm_coreaon_io_srcomp_clkctrl = 0x4a008650,
 
@@ -706,6 +700,8 @@ struct prcm_regs const omap5_es2_prcm = {
 	.cm_l3init_p1500_clkctrl = 0x4a009678,
 	.cm_l3init_fsusb_clkctrl = 0x4a0096d0,
 	.cm_l3init_ocp2scp1_clkctrl = 0x4a0096e0,
+	.cm_l3init_ocp2scp3_clkctrl = 0x4a0096e8,
+	.cm_l3init_usb_otg_ss_clkctrl = 0x4a0096f0,
 
 	/* prm irqstatus regs */
 	.prm_irqstatus_mpu_2 = 0x4ae06014,
@@ -735,12 +731,6 @@ struct prcm_regs const omap5_es2_prcm = {
 	.prm_vc_cfg_i2c_mode = 0x4ae07cb4,
 	.prm_vc_cfg_i2c_clk = 0x4ae07cb8,
 
-	.prm_sldo_core_setup = 0x4ae07cc4,
-	.prm_sldo_core_ctrl = 0x4ae07cc8,
-	.prm_sldo_mpu_setup = 0x4ae07ccc,
-	.prm_sldo_mpu_ctrl = 0x4ae07cd0,
-	.prm_sldo_mm_setup = 0x4ae07cd4,
-	.prm_sldo_mm_ctrl = 0x4ae07cd8,
 	.prm_abbldo_mpu_setup = 0x4ae07cdc,
 	.prm_abbldo_mpu_ctrl = 0x4ae07ce0,
 
@@ -803,6 +793,7 @@ struct prcm_regs const dra7xx_prcm = {
 	.cm_clkmode_dpll_dsp			= 0x4a005234,
 	.cm_shadow_freq_config1			= 0x4a005260,
 	.cm_clkmode_dpll_gmac			= 0x4a0052a8,
+	.cm_coreaon_usb_phy2_core_clkctrl = 0x4a008688,
 
 	/* cm1.mpu */
 	.cm_mpu_mpu_clkctrl			= 0x4a005320,
@@ -933,6 +924,7 @@ struct prcm_regs const dra7xx_prcm = {
 	.cm_l4per_gpio8_clkctrl			= 0x4a009818,
 	.cm_l4per_mmcsd3_clkctrl		= 0x4a009820,
 	.cm_l4per_mmcsd4_clkctrl		= 0x4a009828,
+	.cm_l4per_qspi_clkctrl			= 0x4a009838,
 	.cm_l4per_uart1_clkctrl			= 0x4a009840,
 	.cm_l4per_uart2_clkctrl			= 0x4a009848,
 	.cm_l4per_uart3_clkctrl			= 0x4a009850,

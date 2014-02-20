@@ -3,7 +3,7 @@
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  * Klaus Heydeck, Kieback & Peter GmbH & Co KG, heydeck@kieback-peter.de
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /*
@@ -154,7 +154,6 @@
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP			/* undef to save memory		*/
-#define CONFIG_SYS_PROMPT	"=> "		/* Monitor Command Prompt	*/
 #if defined(CONFIG_CMD_KGDB)
 #define CONFIG_SYS_CBSIZE	1024		/* Console I/O Buffer Size	*/
 #else
@@ -171,8 +170,6 @@
 #define CONFIG_SYS_MEMTEST_SCRATCH	0x90000200	/* using latch as scratch register */
 
 #define CONFIG_SYS_LOAD_ADDR		0x400000	/* default load address */
-
-#define CONFIG_SYS_HZ			1000		/* decrementer freq: 1 ms ticks */
 
 #define CONFIG_SYS_BAUDRATE_TABLE	{ 9600, 19200, 38400, 115200 }
 

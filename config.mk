@@ -13,12 +13,6 @@ SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 export	SHELL
 
-ifeq ($(CONFIG_TPL_BUILD),y)
-SPL_BIN := u-boot-tpl
-else
-SPL_BIN := u-boot-spl
-endif
-
 ifeq ($(CURDIR),$(SRCTREE))
 dir :=
 else
@@ -256,11 +250,16 @@ Please undefined CONFIG_SYS_GENERIC_BOARD in your board config file)
 endif
 endif
 
+# Sandbox needs the base flags and includes, so keep them around
+BASE_CPPFLAGS := $(CPPFLAGS)
+
 ifneq ($(OBJTREE),$(SRCTREE))
-CPPFLAGS += -I$(OBJTREE)/include2 -I$(OBJTREE)/include
+BASE_INCLUDE_DIRS := $(OBJTREE)/include
 endif
 
-CPPFLAGS += -I$(TOPDIR)/include
+BASE_INCLUDE_DIRS += $(TOPDIR)/include $(SRCTREE)/arch/$(ARCH)/include
+
+CPPFLAGS += $(patsubst %, -I%, $(BASE_INCLUDE_DIRS))
 CPPFLAGS += -fno-builtin -ffreestanding -nostdinc	\
 	-isystem $(gccincdir) -pipe $(PLATFORM_CPPFLAGS)
 
@@ -320,7 +319,7 @@ endif
 
 # Linus' kernel sanity checking tool
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
-                  -Wbitwise -Wno-return-void -D__CHECK_ENDIAN__ $(CF)
+		  -Wbitwise -Wno-return-void -D__CHECK_ENDIAN__ $(CF)
 
 # Location of a usable BFD library, where we define "usable" as
 # "built for ${HOST}, supports ${TARGET}".  Sensible values are

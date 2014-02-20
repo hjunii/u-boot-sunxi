@@ -4,7 +4,7 @@
  * Matrix Vision mvBlueLYNX-M7 configuration file
  * based on Freescale's MPC8349ITX.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 
@@ -292,7 +292,6 @@
 			(CONFIG_SYS_CBSIZE + sizeof(CONFIG_SYS_PROMPT) + 16)
 #define CONFIG_SYS_MAXARGS	16
 #define CONFIG_SYS_BARGSIZE	CONFIG_SYS_CBSIZE
-#define CONFIG_SYS_HZ		1000
 
 /*
  * For booting Linux, the board info and command line data

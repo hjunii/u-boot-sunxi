@@ -11,6 +11,7 @@
 #include <mmc.h>
 #include <dwmmc.h>
 #include <asm-generic/errno.h>
+#include <asm/arch/dwmmc.h>
 
 #define PAGE_SIZE 4096
 
@@ -41,12 +42,11 @@ static void dwmci_set_idma_desc(struct dwmci_idmac *idmac,
 }
 
 static void dwmci_prepare_data(struct dwmci_host *host,
-		struct mmc_data *data)
+		struct mmc_data *data, struct dwmci_idmac *cur_idmac)
 {
 	unsigned long ctrl;
 	unsigned int i = 0, flags, cnt, blk_cnt;
 	ulong data_start, data_end, start_addr;
-	ALLOC_CACHE_ALIGN_BUFFER(struct dwmci_idmac, cur_idmac, data->blocks);
 
 
 	blk_cnt = data->blocks;
@@ -73,7 +73,7 @@ static void dwmci_prepare_data(struct dwmci_host *host,
 		dwmci_set_idma_desc(cur_idmac, flags, cnt,
 				start_addr + (i * PAGE_SIZE));
 
-		if(blk_cnt < 8)
+		if (blk_cnt <= 8)
 			break;
 		blk_cnt -= 8;
 		cur_idmac++;
@@ -111,6 +111,8 @@ static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 		struct mmc_data *data)
 {
 	struct dwmci_host *host = (struct dwmci_host *)mmc->priv;
+	ALLOC_CACHE_ALIGN_BUFFER(struct dwmci_idmac, cur_idmac,
+				 data ? DIV_ROUND_UP(data->blocks, 8) : 0);
 	int flags = 0, i;
 	unsigned int timeout = 100000;
 	u32 retry = 10000;
@@ -127,7 +129,7 @@ static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 	dwmci_writel(host, DWMCI_RINTSTS, DWMCI_INTMSK_ALL);
 
 	if (data)
-		dwmci_prepare_data(host, data);
+		dwmci_prepare_data(host, data, cur_idmac);
 
 	dwmci_writel(host, DWMCI_CMDARG, cmd->cmdarg);
 
@@ -219,12 +221,12 @@ static int dwmci_setup_bus(struct dwmci_host *host, u32 freq)
 	if ((freq == host->clock) || (freq == 0))
 		return 0;
 	/*
-	 * If host->mmc_clk didn't define,
+	 * If host->get_mmc_clk didn't define,
 	 * then assume that host->bus_hz is source clock value.
 	 * host->bus_hz should be set from user.
 	 */
-	if (host->mmc_clk)
-		sclk = host->mmc_clk(host->dev_index);
+	if (host->get_mmc_clk)
+		sclk = host->get_mmc_clk(host->dev_index);
 	else if (host->bus_hz)
 		sclk = host->bus_hz;
 	else {
@@ -299,6 +301,16 @@ static int dwmci_init(struct mmc *mmc)
 {
 	struct dwmci_host *host = (struct dwmci_host *)mmc->priv;
 	u32 fifo_size;
+
+	if (host->quirks & DWMCI_QUIRK_DISABLE_SMU) {
+		dwmci_writel(host, EMMCP_MPSBEGIN0, 0);
+		dwmci_writel(host, EMMCP_SEND0, 0);
+		dwmci_writel(host, EMMCP_CTRL0,
+			     MPSCTRL_SECURE_READ_BIT |
+			     MPSCTRL_SECURE_WRITE_BIT |
+			     MPSCTRL_NON_SECURE_READ_BIT |
+			     MPSCTRL_NON_SECURE_WRITE_BIT | MPSCTRL_VALID);
+	}
 
 	dwmci_writel(host, DWMCI_PWREN, 1);
 

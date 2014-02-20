@@ -2,7 +2,7 @@
  * Copyright 2010 Extreme Engineering Solutions, Inc.
  * Copyright 2007-2008 Freescale Semiconductor, Inc.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
@@ -108,7 +108,7 @@ void fsl_ddr_board_options(memctl_options_t *popts,
 		    ddr_freq <= pbsp->datarate_mhz_high) {
 			popts->clk_adjust = pbsp->clk_adjust;
 			popts->cpo_override = pbsp->cpo;
-			popts->twoT_en = 0;
+			popts->twot_en = 0;
 			break;
 		}
 		pbsp++;

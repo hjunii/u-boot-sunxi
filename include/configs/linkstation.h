@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2006 Mihai Georgian <u-boot@linuxnotincluded.org.uk>
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __CONFIG_H
@@ -118,7 +118,6 @@
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP				/* undef to save memory		*/
-#define CONFIG_SYS_PROMPT		"=> "		/* Monitor Command Prompt	*/
 #define CONFIG_SYS_CBSIZE		256		/* Console I/O Buffer Size	*/
 
 #define CONFIG_SYS_PBSIZE		(CONFIG_SYS_CBSIZE + sizeof(CONFIG_SYS_PROMPT) + 16)
@@ -306,7 +305,6 @@
 /* FIXME: 32.768 MHz is the crystal frequency but */
 /* the real frequency is lower by about 0.75%     */
 #define CONFIG_SYS_CLK_FREQ	32768000
-#define CONFIG_SYS_HZ			1000
 
 /* Bit-field values for MCCR1.  */
 #define CONFIG_SYS_ROMNAL      0

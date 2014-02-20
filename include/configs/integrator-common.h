@@ -4,7 +4,7 @@
  * Linus Walleij <linus.walleij@linaro.org>
  * Common ARM Integrator configuration settings
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #define CONFIG_INTEGRATOR
@@ -12,7 +12,6 @@
 #define CONFIG_SYS_TEXT_BASE		0x01000000
 #define CONFIG_SYS_MEMTEST_START	0x100000
 #define CONFIG_SYS_MEMTEST_END		0x10000000
-#define CONFIG_SYS_HZ			1000
 #define CONFIG_SYS_TIMERBASE		0x13000100	/* Timer1 */
 #define CONFIG_SYS_LOAD_ADDR		0x7fc0	/* default load address */
 #define CONFIG_SYS_LONGHELP

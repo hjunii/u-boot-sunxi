@@ -1,7 +1,7 @@
 /*
  * (C) Copyright 2004 Sandburst Corporation
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /************************************************************************
@@ -282,8 +282,5 @@
 #undef CONFIG_WATCHDOG			     /* watchdog disabled	*/
 #define CONFIG_SYS_LOAD_ADDR	      0x8000000	     /* default load address	*/
 #define CONFIG_SYS_EXTBDINFO	      1		     /* use extended board_info */
-
-#define CONFIG_SYS_HZ		      100	     /* decr freq: 1 ms ticks	*/
-
 
 #endif	/* __CONFIG_H */

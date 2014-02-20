@@ -2,7 +2,7 @@
  * Copyright 2004, 2007-2012 Freescale Semiconductor, Inc.
  * Copyright (C) 2003  Motorola,Inc.
  *
- * SPDX-License-Identifier:	GPL-2.0+ 
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /* U-Boot Startup Code for Motorola 85xx PowerPC based Embedded Boards
@@ -699,7 +699,7 @@ delete_temp_tlbs:
 
 #endif /* #if (CONFIG_SYS_CCSRBAR_DEFAULT != CONFIG_SYS_CCSRBAR_PHYS) */
 
-#ifdef CONFIG_SYS_FSL_QORIQ_CHASSIS2
+#if defined(CONFIG_SYS_FSL_QORIQ_CHASSIS2) && defined(CONFIG_E6500)
 create_ccsr_l2_tlb:
 	/*
 	 * Create a TLB for the MMR location of CCSR

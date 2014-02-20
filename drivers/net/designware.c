@@ -96,7 +96,7 @@ static int mac_reset(struct eth_device *dev)
 	ulong start;
 	int timeout = CONFIG_MACRESET_TIMEOUT;
 
-	writel(DMAMAC_SRST, &dma_p->busmode);
+	writel(readl(&dma_p->busmode) | DMAMAC_SRST, &dma_p->busmode);
 
 	if (priv->interface != PHY_INTERFACE_MODE_RGMII)
 		writel(MII_PORTSELECT, &mac_p->conf);
@@ -154,7 +154,7 @@ static int dw_eth_init(struct eth_device *dev, bd_t *bis)
 	/* Resore the HW MAC address as it has been lost during MAC reset */
 	dw_write_hwaddr(dev);
 
-	writel(FIXEDBURST | PRIORXTX_41 | BURST_16,
+	writel(FIXEDBURST | PRIORXTX_41 | BURST_8,
 			&dma_p->busmode);
 
 	writel(readl(&dma_p->opmode) | FLUSHTXFIFO | STOREFORWARD |
